@@ -184,9 +184,9 @@ The intended mapping is:
 
    | Type | Name | Content | TTL |
    |---|---|---|---|
-   | TXT | `@` | `_68i2653gc8nnk5xkemqbv09j5fpsf8z` | Auto |
+   | TXT | `_dnsauth` | `_68i2653gc8nnk5xkemqbv09j5fpsf8z` | Auto |
 
-   This is a public DNS verification value, not an application secret. Keep the existing Google verification TXT and other TXT records. Recheck the current token before use; if Azure replaces or expires it, use **agent-ready-check > Custom domains > isainative.dev > TXT validation**, or read it with:
+   Cloudflare displays the name as `_dnsauth.isainative.dev`. That name already has a TXT record holding the old app's apex token (`_ph8y059hfj938xvqydws4en1vi8doba`); add the new value as a **second** TXT record rather than editing or deleting the old one while the old apex binding exists. `_dnsauth.www` belongs to the old `www` binding and is not used for the apex. This is a public DNS verification value, not an application secret. Keep the existing Google verification TXT and other TXT records. Recheck the current token before use; if Azure replaces or expires it, use **agent-ready-check > Custom domains > isainative.dev > TXT validation**, or read it with:
 
    ```powershell
    az staticwebapp hostname list -g rg-agent-ready-check -n agent-ready-check --subscription $sub --query "[?domainName=='isainative.dev'].{status:status,token:validationToken}" -o json
@@ -199,6 +199,7 @@ The intended mapping is:
    az staticwebapp hostname set -g rg-agent-ready-check -n agent-ready-check --hostname isainative.dev --validation-method dns-txt-token --subscription $sub
    ```
 
+   If the checker remains `Validating` for more than an hour after the old apex binding is deleted, remove only the stale `_dnsauth` value `_ph8y059hfj938xvqydws4en1vi8doba`, keep the checker's value and recheck.
 3. In Cloudflare, replace the apex's old web-routing A/AAAA/CNAME record with **CNAME**, Name **@**, Target **kind-pond-004d16e03.8.azurestaticapps.net**, **DNS only**, TTL **Auto**. Remove only conflicting web-routing records at `@`, not MX/TXT/CAA records. Cloudflare automatically flattens the apex CNAME; public DNS will return A/AAAA answers rather than a literal CNAME.
 4. Wait for Azure **Ready**, a valid HTTPS certificate, and `https://isainative.dev/api/health` to show `runtime: "azure"`, `status: "ok"` and `checks: 113`. DNS/TLS convergence can take time; do not disable certificate validation.
 5. Run **Deploy infra** in this repository with `custom_domain=isainative.dev`, `validation_method=dns-txt-token`, `swa_sku=Free`, `browser_runner=true`. Its guard requires a Ready binding and the correct live health response before changing application links:
