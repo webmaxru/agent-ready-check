@@ -149,6 +149,8 @@ The intended mapping is:
 
 **Status on 18 November 2026:** the old site still owns the apex and `www`; `repo` has no DNS record. The checker has a pending, validation-only apex entry. No existing binding or DNS record was removed. Cloudflare changes need an authenticated zone administrator. Keep both deployment workflows idle during the actual binding/DNS transfer.
 
+**Deployment prerequisite:** the migration preparation is published in both repositories, but the original site's [CD run](https://github.com/webmaxru/is-ai-native/actions/runs/44377418039) was blocked before Azure deployment by its existing Trivy gate: a critical `proxy-addr` finding and a high-severity `body-parser` finding in unchanged dependencies. Resolve those findings and obtain a successful CD run against the current origin **before starting the maintenance window or changing any bindings**. Do not bypass the security gate. The original deployed site is unchanged; the checker's preparation deployment succeeded on its Azure hostname.
+
 ### Step 4. Bring the old site up at repo.isainative.dev
 
 1. In **Cloudflare > isainative.dev > DNS > Records**, add **CNAME**, Name **repo**, Target **victorious-pebble-0d07f890f.7.azurestaticapps.net**, **DNS only** (grey cloud), TTL **Auto**. Leave the apex, mail records, TXT verification records, CAA and unrelated subdomains unchanged.
