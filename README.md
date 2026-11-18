@@ -82,7 +82,7 @@ The home page registers `scan_site` with `document.modelContext.registerTool()` 
 
 ### CLI
 
-Published to npm as [`agent-ready-check`](https://www.npmjs.com/package/agent-ready-check) from GitHub releases (trusted publishing with provenance; see [docs/PUBLISHING.md](docs/PUBLISHING.md)). Until the first version is on npm, run it from GitHub with `npx github:vibeprogrammer/agent-ready-check <url>`.
+Published to npm as [`agent-ready-check`](https://www.npmjs.com/package/agent-ready-check) from GitHub releases (trusted publishing with provenance; see [docs/PUBLISHING.md](docs/PUBLISHING.md)).
 
 ```bash
 npx agent-ready-check https://example.com                 # table
