@@ -16,7 +16,7 @@
   Bash twin: infra/deploy.sh.
 
 .EXAMPLE
-  ./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check -CustomDomain agent.isainative.dev
+  ./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check -CustomDomain isainative.dev -DomainValidationMethod dns-txt-token
 .EXAMPLE
   ./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check -NoBrowserRunner -Yes
 #>
@@ -25,6 +25,8 @@ param(
   [string]$GitHubRepo = '',
   [string]$OidcSubject = '',
   [string]$CustomDomain = '',
+  [ValidateSet('cname-delegation', 'dns-txt-token')]
+  [string]$DomainValidationMethod = 'cname-delegation',
   [string]$ResourceGroup = 'rg-agent-ready-check',
   [string]$Location = 'westeurope',
   [ValidateSet('westeurope', 'eastus2', 'centralus', 'westus2', 'eastasia')]
@@ -193,16 +195,23 @@ function Invoke-Deploy([string]$Domain) {
   $runnerFlag = 'false'
   if ($Runner) { $runnerFlag = 'true' }
   $json = Invoke-Az @('deployment', 'group', 'create', '-g', $ResourceGroup, '-n', $deployName, '-f', (Join-Path $InfraDir 'main.bicep'),
-    '-p', "appName=$Name", "location=$Location", "swaLocation=$SwaLocation", "swaSku=$Sku", "customDomain=$Domain",
+    '-p', "appName=$Name", "location=$Location", "swaLocation=$SwaLocation", "swaSku=$Sku", "customDomain=$Domain", "domainValidationMethod=$DomainValidationMethod",
     "deployBrowserRunner=$runnerFlag", "runnerImage=$RunnerImage", "deployerPrincipalId=$spObjectId",
     '--query', 'properties.outputs', '-o', 'json')
   return ($json | ConvertFrom-Json)
 }
 
 Write-Step 'Deploy infra/main.bicep'
-# A domain is bound only when DNS already points at the app, so the first pass deploys without it (the public origin
-# is then the default host name; it switches to https://<domain> once the domain is bound).
-$out = Invoke-Deploy ''
+$initialDomain = ''
+if ($CustomDomain -and $DomainValidationMethod -eq 'dns-txt-token') {
+  $ready = Invoke-Az @('staticwebapp', 'hostname', 'list', '-n', $Name, '-g', $ResourceGroup,
+    '--query', "[?domainName=='$CustomDomain' && status=='Ready'] | length(@)", '-o', 'tsv')
+  if ($ready -ne '1') {
+    Exit-WithHint "TXT-validated domain $CustomDomain is not Ready" 'finish Azure ownership validation and DNS cutover first (docs/PUBLISHING.md)'
+  }
+  $initialDomain = $CustomDomain
+}
+$out = Invoke-Deploy $initialDomain
 $swaName = $out.staticWebAppName.value
 $swaHost = $out.defaultHostname.value
 $runnerApp = $out.runnerAppName.value
@@ -210,8 +219,8 @@ $origin = $out.publicOrigin.value
 Write-Ok "Static Web App $swaName at https://$swaHost"
 if ($runnerApp) { Write-Ok ("browser runner {0} ({1})" -f $runnerApp, $out.runnerFqdn.value) }
 
-$bound = $false
-if ($CustomDomain) {
+$bound = [bool]$initialDomain
+if ($CustomDomain -and -not $bound) {
   Write-Step "Custom domain $CustomDomain"
   $cname = ''
   if (Get-Command Resolve-DnsName -ErrorAction SilentlyContinue) {
@@ -240,10 +249,13 @@ if ($CustomDomain) {
 
 Write-Step 'Done'
 $hostLabel = 'your subdomain'
-if ($CustomDomain) { $hostLabel = $CustomDomain.Split('.')[0] }
+if ($CustomDomain) { $hostLabel = $CustomDomain }
 Write-Host ''
 Write-Host 'DNS record to add at the registrar of your domain:'
 Write-Host ("  Type CNAME   Host {0}   Value {1}   TTL 3600" -f $hostLabel, $swaHost)
+if ($DomainValidationMethod -eq 'dns-txt-token') {
+  Write-Host '  For an apex in Cloudflare use Name @, DNS only, and keep the Azure verification TXT record.'
+}
 Write-Host ''
 Write-Host 'GitHub repository variables (Settings > Secrets and variables > Actions > Variables):'
 $vars = [ordered]@{

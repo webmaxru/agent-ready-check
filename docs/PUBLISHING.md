@@ -17,7 +17,7 @@ This page is the click-by-click setup. The architecture, the decisions and the c
 | 1 | Create the Azure resources and the GitHub sign-in (one Cloud Shell run) | Azure portal, Cloud Shell | 15 min | about 0 USD/month (see DEPLOY.md) |
 | 2 | Add the repository variables | GitHub | 5 min | free |
 | 3 | First deploy, then make the runner image public | GitHub | 10 min (mostly waiting) | free |
-| 4 | DNS record for agent.isainative.dev | Cloudflare (your DNS host) | 5 min + propagation | free |
+| 4 | Move the old site to repo.isainative.dev, then switch isainative.dev | Cloudflare and Azure | staged cutover + propagation | free |
 | 5 | Bind the domain | GitHub (Deploy infra workflow) | 5 min + certificate | free |
 | 6 | npm: account, first publish, trusted publisher | npmjs.com, a Codespace | 15 min | free (public package) |
 | 7 | Turn on npm publishing | GitHub | 1 min | free |
@@ -60,22 +60,23 @@ One run of `infra/deploy.sh` in Azure Cloud Shell does all of it. You need an Az
 
    ```bash
    git clone https://github.com/webmaxru/agent-ready-check && cd agent-ready-check
-   ./infra/deploy.sh --github-repo webmaxru/agent-ready-check --custom-domain agent.isainative.dev
+   ./infra/deploy.sh --github-repo webmaxru/agent-ready-check
    ```
 
-   PowerShell twin: `./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check -CustomDomain agent.isainative.dev`.
+   PowerShell twin: `./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check`. Sign in with `gh auth login` first so setup can discover the repository's exact OIDC subject.
 
 3. Type `y` at the prompt. In about 5 to 10 minutes it:
    - registers the resource providers `Microsoft.Web`, `Microsoft.Storage`, `Microsoft.App`;
    - creates resource group `rg-agent-ready-check` (West Europe);
    - creates the Entra app registration **agent-ready-check-github** with a federated credential for `repo:webmaxru/agent-ready-check:environment:production` (issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`), no client secret;
    - deploys `infra/main.bicep`: the Static Web App **agent-ready-check** (Free plan), a storage account with the `reports` container and a 30-day lifecycle rule, the Container Apps environment and the **agent-ready-check-runner** app (scale 0 to 1, a placeholder image until step 3), the application settings, and **Contributor** on the resource group for the app registration;
-   - checks DNS for agent.isainative.dev. The first time there is no record yet, so it prints the record to add and does not bind the domain (that is step 5).
+   - deploys on the generated Azure hostname. Do not bind the occupied apex until the existing site has moved (steps 4 and 5).
 4. Copy the block it prints at the end. It looks like this (your values differ):
 
    ```
-   DNS record to add at the registrar of agent.isainative.dev:
-     Type CNAME   Host agent   Value <name>.azurestaticapps.net   TTL 3600
+   DNS record after the old site has moved:
+     Type CNAME   Host @   Value <name>.azurestaticapps.net   TTL Auto
+     Apex domains also need Azure TXT ownership validation.
 
    GitHub repository variables:
      AZURE_CLIENT_ID          <guid>
@@ -118,7 +119,7 @@ GitHub > the repository > **Settings** > **Secrets and variables** > **Actions**
 | `AZURE_RESOURCE_GROUP` | `rg-agent-ready-check` |
 | `AZURE_STATIC_WEB_APP` | `agent-ready-check` |
 | `AZURE_RUNNER_APP` | `agent-ready-check-runner` (leave unset to run without browser checks) |
-| `PUBLIC_BASE_URL` | the `https://<name>.azurestaticapps.net` URL for now; `https://agent.isainative.dev` after step 5 |
+| `PUBLIC_BASE_URL` | the `https://<name>.azurestaticapps.net` URL for now; `https://isainative.dev` after step 5 |
 
 Use **Variables**, not Secrets: these are identifiers. (If the GitHub CLI is signed in in Cloud Shell, `--set-github-variables` on the script writes them for you.)
 
@@ -136,27 +137,92 @@ Until `AZURE_CLIENT_ID` exists, the deploy workflows skip their jobs, so merges 
 
 **Cost:** GitHub Actions minutes are free for public repositories; GitHub Container Registry is free for public images.
 
-## Step 4. DNS record for agent.isainative.dev
+## Domain migration: isainative.dev and repo.isainative.dev
 
-isainative.dev's DNS is hosted on Cloudflare (its name servers are `gina.ns.cloudflare.com` and `stan.ns.cloudflare.com`, checked 5 Nov 2026). In the Cloudflare dashboard > isainative.dev > **DNS** > **Records** > **Add record**:
+The intended mapping is:
 
-| Type | Name | Target | Proxy status | TTL |
-|---|---|---|---|---|
-| CNAME | `agent` | `<name>.azurestaticapps.net` (the default host name from step 1, without `https://`) | **DNS only** (grey cloud) | Auto |
+| Public domain | Application | Azure Static Web App | DNS target |
+|---|---|---|---|
+| `repo.isainative.dev` | Existing GitHub repository scanner (`webmaxru/is-ai-native`) | `is-ai-native-frontend`, resource group `is-ai-native-rg` | `victorious-pebble-0d07f890f.7.azurestaticapps.net` |
+| `isainative.dev` | Agent-Ready Check | `agent-ready-check`, resource group `rg-agent-ready-check` | `kind-pond-004d16e03.8.azurestaticapps.net` |
+| `www.isainative.dev` | Recommended alias for Agent-Ready Check | `agent-ready-check` | `kind-pond-004d16e03.8.azurestaticapps.net` |
 
-- **DNS only matters.** With the orange cloud (proxied), Cloudflare answers with its own addresses, Azure cannot see the CNAME, the domain validation fails and Azure cannot issue its certificate.
-- **No TXT record is needed.** Static Web Apps validates a subdomain by its CNAME ([custom domains on other DNS](https://learn.microsoft.com/en-us/azure/static-web-apps/custom-domain-external)). TXT validation is only for apex domains, or for the Enterprise-grade edge add-on, which this setup does not use.
-- **CAA:** isainative.dev has CAA records. They already allow `digicert.com`, the authority Static Web Apps certificates have been reported to come from, so nothing to change. If the certificate stays "pending" for hours, check this first.
+**Status on 18 November 2026:** the old site still owns the apex and `www`; `repo` has no DNS record. The checker has a pending, validation-only apex entry. No existing binding or DNS record was removed. Cloudflare changes need an authenticated zone administrator. Keep both deployment workflows idle during the actual binding/DNS transfer.
 
-Check from any terminal or https://dnschecker.org: `agent.isainative.dev` CNAME should show the azurestaticapps.net name. Usually minutes on Cloudflare.
+### Step 4. Bring the old site up at repo.isainative.dev
 
-## Step 5. Bind the domain
+1. In **Cloudflare > isainative.dev > DNS > Records**, add **CNAME**, Name **repo**, Target **victorious-pebble-0d07f890f.7.azurestaticapps.net**, **DNS only** (grey cloud), TTL **Auto**. Leave the apex, mail records, TXT verification records, CAA and unrelated subdomains unchanged.
+2. The old SWA is on Free and both of its custom-domain slots are occupied by the apex and `www`. It cannot add `repo` yet. Schedule a short `www` interruption and remove **only** the old `www` binding in Azure > `is-ai-native-frontend` > Custom domains. Do not remove the apex yet. If `www` must stay uninterrupted, obtain approval for a temporary Standard upgrade instead; do not silently incur that cost.
+3. Add `repo.isainative.dev` to the old SWA using CNAME validation. In PowerShell, with Azure CLI signed in:
 
-Repository > **Actions** > **Deploy infra** > **Run workflow**: custom domain `agent.isainative.dev`, plan `Free`, browser runner on. The workflow checks the CNAME first (it stops with a clear error if the record is missing or proxied), then re-applies `infra/main.bicep` with the domain. Azure validates it and issues a free certificate, usually within minutes.
+   ```powershell
+   $sub = 'd0b7d6ee-17bf-4c4f-b79d-4f6c2cb583fd'
+   # Run only in the agreed www maintenance window:
+   az staticwebapp hostname delete -g is-ai-native-rg -n is-ai-native-frontend --hostname www.isainative.dev --subscription $sub --yes
+   az staticwebapp hostname set -g is-ai-native-rg -n is-ai-native-frontend --hostname repo.isainative.dev --validation-method cname-delegation --subscription $sub
+   az staticwebapp hostname list -g is-ai-native-rg -n is-ai-native-frontend --subscription $sub -o table
+   ```
 
-Then set the variable `PUBLIC_BASE_URL` to `https://agent.isainative.dev` (step 2 page) and run **Deploy to Azure** once more, so the smoke test and the self-scan use the real domain. The function already uses the domain in its links: Bicep sets its `BASE_URL` setting when the domain is bound.
+4. Wait for `repo.isainative.dev` to be **Ready**, then confirm HTTPS loads the old frontend. Its first API requests are not ready until backend CORS is updated by the next step.
+5. In `webmaxru/is-ai-native`, set these **repository Actions variables** (the updated CD workflow prefers them over the legacy secrets), then run **CD** on `main`:
 
-(Re-running the Cloud Shell script with `--custom-domain agent.isainative.dev` does the same.)
+   ```powershell
+   gh variable set SITE_ORIGIN --repo webmaxru/is-ai-native --body https://repo.isainative.dev
+   gh variable set STATIC_WEB_APP_CUSTOM_DOMAIN_NAME --repo webmaxru/is-ai-native --body repo.isainative.dev
+   gh variable set STATIC_WEB_APP_DOMAIN_VALIDATION_METHOD --repo webmaxru/is-ai-native --body cname-delegation
+   gh workflow run cd.yml --repo webmaxru/is-ai-native --ref main
+   ```
+
+   This keeps the same backend, reports storage and API hostname. Bicep updates backend `SITE_ORIGIN`, `ALLOWED_ORIGINS` and the availability-monitor URL; the frontend rebuild updates canonical tags, sitemap and social metadata. The generated Azure frontend hostname remains a supported CORS origin.
+6. Wait for CD to succeed. Verify a repository scan, an existing shared report (replace only its hostname), `runtime-config.js`, canonical URLs, and CORS from `https://repo.isainative.dev`. **Do not move the apex before this succeeds.** Old apex API access can stop working once CORS switches; complete the remaining cutover in the same maintenance window.
+
+### Step 5. Move the apex to Agent-Ready Check
+
+1. Add the checker's Azure TXT verification record in Cloudflare. The pending token generated on 18 November 2026 is:
+
+   | Type | Name | Content | TTL |
+   |---|---|---|---|
+   | TXT | `@` | `_68i2653gc8nnk5xkemqbv09j5fpsf8z` | Auto |
+
+   This is a public DNS verification value, not an application secret. Keep the existing Google verification TXT and other TXT records. Recheck the current token before use; if Azure replaces or expires it, use **agent-ready-check > Custom domains > isainative.dev > TXT validation**, or read it with:
+
+   ```powershell
+   az staticwebapp hostname list -g rg-agent-ready-check -n agent-ready-check --subscription $sub --query "[?domainName=='isainative.dev'].{status:status,token:validationToken}" -o json
+   ```
+
+2. After `repo` works and the TXT record is visible, remove the **old apex binding only**, then finish binding it to the checker. A domain cannot remain an active custom domain on both apps:
+
+   ```powershell
+   az staticwebapp hostname delete -g is-ai-native-rg -n is-ai-native-frontend --hostname isainative.dev --subscription $sub --yes
+   az staticwebapp hostname set -g rg-agent-ready-check -n agent-ready-check --hostname isainative.dev --validation-method dns-txt-token --subscription $sub
+   ```
+
+3. In Cloudflare, replace the apex's old web-routing A/AAAA/CNAME record with **CNAME**, Name **@**, Target **kind-pond-004d16e03.8.azurestaticapps.net**, **DNS only**, TTL **Auto**. Remove only conflicting web-routing records at `@`, not MX/TXT/CAA records. Cloudflare automatically flattens the apex CNAME; public DNS will return A/AAAA answers rather than a literal CNAME.
+4. Wait for Azure **Ready**, a valid HTTPS certificate, and `https://isainative.dev/api/health` to show `runtime: "azure"`, `status: "ok"` and `checks: 113`. DNS/TLS convergence can take time; do not disable certificate validation.
+5. Run **Deploy infra** in this repository with `custom_domain=isainative.dev`, `validation_method=dns-txt-token`, `swa_sku=Free`, `browser_runner=true`. Its guard requires a Ready binding and the correct live health response before changing application links:
+
+   ```powershell
+   gh workflow run deploy-infra.yml --repo webmaxru/agent-ready-check --ref main -f custom_domain=isainative.dev -f validation_method=dns-txt-token -f swa_sku=Free -f browser_runner=true
+   # Wait for the infra run to succeed before continuing.
+   gh variable set PUBLIC_BASE_URL --repo webmaxru/agent-ready-check --body https://isainative.dev
+   gh workflow run deploy-azure.yml --repo webmaxru/agent-ready-check --ref main
+   ```
+
+   Bicep sets runtime `BASE_URL`; the variable controls frontend build URLs, workflow smoke tests and deployment links. Leave `PUBLIC_BASE_URL` on the generated Azure URL until this stage.
+6. For the recommended `www` alias, change its Cloudflare CNAME to **kind-pond-004d16e03.8.azurestaticapps.net** (DNS only), then bind it to the checker:
+
+   ```powershell
+   az staticwebapp hostname set -g rg-agent-ready-check -n agent-ready-check --hostname www.isainative.dev --validation-method cname-delegation --subscription $sub
+   ```
+
+   `www` serves the checker while canonical links use the apex. No `agent` DNS record is needed.
+7. Verify HTTPS on both apps, checker report persistence, repository scans/shared reports, canonical tags and monitoring. Keep the TXT verification record for ownership/renewal. Check restrictive CAA records if certificate issuance fails; follow Azure's reported issuer requirements rather than deleting all CAA restrictions.
+
+Keep Cloudflare proxying **off** for this configuration. No Worker or Page Rule is needed. Do not redirect the entire apex to `repo`, because the apex now serves a different application. Old repository-scan and shared-report links must use `repo.isainative.dev` with their existing path/query.
+
+**Rollback:** retain both Azure resources and default hostnames. If the checker cutover fails, stop new deployments, detach its apex binding, restore the old apex binding and previous Cloudflare web-routing record, restore the old repository's origin/domain/validation-method variables and run CD. Do not delete the working `repo` binding or either reports store. A rollback may also require DNS/TLS convergence.
+
+Sources: [Azure apex-domain setup](https://learn.microsoft.com/en-us/azure/static-web-apps/apex-domain-external), [Cloudflare CNAME flattening](https://developers.cloudflare.com/dns/cname-flattening/).
 
 ## Step 6. npm
 
@@ -208,7 +274,7 @@ Until this variable is `true`, the **Publish to npm** workflow skips its job. Th
 ## How a release flows from now on
 
 1. A PR changes the code and bumps `"version"` in `package.json` (for example to 0.2.1). CI runs: lint, unit tests on Node 22 and 24, the graded fixtures, the browser end-to-end tests, the Azure build and bundle smoke test, the runner image build with one real browser job, and the offline infra checks.
-2. **Merge** to `main`: **Deploy to Azure** builds and rolls out the runner image and the site and API, then smoke-tests https://agent.isainative.dev.
+2. **Merge** to `main`: **Deploy to Azure** builds and rolls out the runner image and the site and API, then smoke-tests `PUBLIC_BASE_URL` (https://isainative.dev after cutover).
 3. On GitHub > **Releases** > **Draft a new release** > tag `v0.2.1` (create it on `main`) > title `v0.2.1` > notes > **Publish release**.
 4. **Publish to npm** runs: it checks that the tag matches `package.json`, runs the tests and publishes with provenance. The npm page then shows a "Provenance" badge linking to the exact workflow run.
 

@@ -1,7 +1,7 @@
 // Agent-Ready Check on Azure: Static Web Apps (site + managed Azure Functions API), Blob Storage for reports,
 // and an optional browser runner on Container Apps (scales to zero).
 //
-//   az deployment group create -g <rg> -f infra/main.bicep -p customDomain=agent.isainative.dev ...
+//   az deployment group create -g <rg> -f infra/main.bicep -p customDomain=isainative.dev domainValidationMethod=dns-txt-token ...
 // infra/deploy.sh and infra/deploy.ps1 wrap this (plus the one-time GitHub OIDC setup); docs/PUBLISHING.md has
 // the click-by-click version and the costs.
 targetScope = 'resourceGroup'
@@ -31,8 +31,15 @@ param swaLocation string = 'westeurope'
 ])
 param swaSku string = 'Free'
 
-@description('Custom domain, for example agent.isainative.dev. Bind it only after its CNAME points at the default host name (the deploy scripts check that first).')
+@description('Custom domain, for example isainative.dev. Validate ownership and configure DNS before switching the public origin.')
 param customDomain string = ''
+
+@description('Use dns-txt-token for an apex domain with a flattened CNAME; cname-delegation is for ordinary subdomains.')
+@allowed([
+  'cname-delegation'
+  'dns-txt-token'
+])
+param domainValidationMethod string = 'cname-delegation'
 
 @description('Public origin used in links, robots.txt, llms.txt, the API catalog and the MCP card. Empty means the custom domain when set, else the default host name.')
 param baseUrl string = ''
@@ -239,13 +246,12 @@ resource appSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
   }
 }
 
-// Bind the custom domain. Static Web Apps validates a subdomain by its CNAME to the default host name, so the
-// DNS record must exist before this runs.
+// Apex domains use TXT ownership validation because DNS providers flatten their CNAME records.
 resource domain 'Microsoft.Web/staticSites/customDomains@2024-04-01' = if (!empty(customDomain)) {
   parent: swa
   name: empty(customDomain) ? 'unused.invalid' : customDomain
   properties: {
-    validationMethod: 'cname-delegation'
+    validationMethod: domainValidationMethod
   }
   dependsOn: [
     appSettings

@@ -7,7 +7,7 @@
 // negotiation, the agent files, /mcp and /api/* behave exactly as on Node and in the Worker.
 //
 // Settings (Static Web Apps application settings, set by infra/main.bicep):
-//   BASE_URL                    public origin, e.g. https://agent.isainative.dev
+//   BASE_URL                    public origin, e.g. https://isainative.dev
 //   REPORTS_CONNECTION_STRING   storage account connection string (reports in Blob Storage); unset = memory only
 //   REPORTS_CONTAINER           blob container (default "reports")
 //   BROWSER_RUNNER_URL          optional browser runner endpoint(s), comma-separated (.../collect)

@@ -12,12 +12,13 @@
 # Needs az (signed in), curl and python3, plus gh (signed in) unless --oidc-subject is supplied.
 # PowerShell twin: infra/deploy.ps1.
 #
-#   ./infra/deploy.sh --github-repo webmaxru/agent-ready-check --custom-domain agent.isainative.dev
+#   ./infra/deploy.sh --github-repo webmaxru/agent-ready-check --custom-domain isainative.dev --domain-validation-method dns-txt-token
 #
 # Options
 #   --github-repo OWNER/REPO   repository whose workflows may deploy (required unless --skip-oidc)
 #   --oidc-subject SUBJECT     exact GitHub OIDC subject (default: discover with gh)
 #   --custom-domain HOST       bind this domain (only once its CNAME points at the app; the script checks)
+#   --domain-validation-method METHOD  cname-delegation (default) or dns-txt-token (prevalidated apex)
 #   --resource-group NAME      default rg-agent-ready-check
 #   --location REGION          storage and runner region, default westeurope
 #   --swa-location REGION      Static Web App region (westeurope, eastus2, centralus, westus2, eastasia)
@@ -34,6 +35,7 @@ set -euo pipefail
 RG="rg-agent-ready-check"; LOCATION="westeurope"; SWA_LOCATION="westeurope"; NAME="agent-ready-check"; SKU="Free"
 SUBSCRIPTION=""; DOMAIN=""; REPO=""; OIDC_SUBJECT=""; RUNNER_IMAGE=""; RUNNER=1; OIDC=1; SET_VARS=0; YES=0
 ENVIRONMENT="production"
+DOMAIN_VALIDATION_METHOD="cname-delegation"
 PLACEHOLDER_IMAGE="mcr.microsoft.com/k8se/quickstart:latest"
 INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -48,6 +50,7 @@ while [ $# -gt 0 ]; do
     --github-repo) REPO="${2:-}"; shift 2 ;;
     --oidc-subject) OIDC_SUBJECT="${2:-}"; shift 2 ;;
     --custom-domain) DOMAIN="${2:-}"; shift 2 ;;
+    --domain-validation-method) DOMAIN_VALIDATION_METHOD="${2:-}"; shift 2 ;;
     --resource-group) RG="${2:-}"; shift 2 ;;
     --location) LOCATION="${2:-}"; shift 2 ;;
     --swa-location) SWA_LOCATION="${2:-}"; shift 2 ;;
@@ -59,12 +62,13 @@ while [ $# -gt 0 ]; do
     --skip-oidc) OIDC=0; shift ;;
     --set-github-variables) SET_VARS=1; shift ;;
     -y|--yes) YES=1; shift ;;
-    -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
     *) die "unknown option $1" "./infra/deploy.sh --help" ;;
   esac
 done
 
 case "$SKU" in Free|Standard) ;; *) die "--sku must be Free or Standard" ;; esac
+case "$DOMAIN_VALIDATION_METHOD" in cname-delegation|dns-txt-token) ;; *) die "--domain-validation-method must be cname-delegation or dns-txt-token" ;; esac
 if [ "$OIDC" = 1 ] && ! printf '%s' "$REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'; then
   die "--github-repo OWNER/REPO is required for the GitHub sign-in" "./infra/deploy.sh --github-repo webmaxru/agent-ready-check (or --skip-oidc)"
 fi
@@ -152,23 +156,28 @@ fi
 
 deploy() { # $1 = custom domain or empty
   az deployment group create -g "$RG" -n "agent-ready-check-$(date +%Y%m%d%H%M%S)" -f "$INFRA_DIR/main.bicep" \
-    -p appName="$NAME" location="$LOCATION" swaLocation="$SWA_LOCATION" swaSku="$SKU" customDomain="$1" \
+    -p appName="$NAME" location="$LOCATION" swaLocation="$SWA_LOCATION" swaSku="$SKU" customDomain="$1" domainValidationMethod="$DOMAIN_VALIDATION_METHOD" \
        deployBrowserRunner="$([ "$RUNNER" = 1 ] && echo true || echo false)" runnerImage="$RUNNER_IMAGE" \
        deployerPrincipalId="$SP_OBJECT_ID" \
     --query properties.outputs -o json
 }
 
 step "Deploy infra/main.bicep"
-# A domain is bound only when DNS already points at the app, so the first pass deploys without it (the public origin
-# is then the default host name; it switches to https://<domain> once the domain is bound).
-OUT="$(deploy "")"
+INITIAL_DOMAIN=""
+if [ -n "$DOMAIN" ] && [ "$DOMAIN_VALIDATION_METHOD" = dns-txt-token ]; then
+  ready="$(az staticwebapp hostname list -n "$NAME" -g "$RG" --query "[?domainName=='$DOMAIN' && status=='Ready'] | length(@)" -o tsv)"
+  [ "$ready" = 1 ] || die "TXT-validated domain $DOMAIN is not Ready" "finish Azure ownership validation and DNS cutover first (docs/PUBLISHING.md)"
+  INITIAL_DOMAIN="$DOMAIN"
+fi
+OUT="$(deploy "$INITIAL_DOMAIN")"
 val() { printf '%s' "$OUT" | python3 -c "import json,sys; print(json.load(sys.stdin)['$1']['value'])"; }
 SWA_NAME="$(val staticWebAppName)"; HOST="$(val defaultHostname)"; RUNNER_APP="$(val runnerAppName)"; ORIGIN="$(val publicOrigin)"
 ok "Static Web App $SWA_NAME at https://$HOST"
 [ -n "$RUNNER_APP" ] && ok "browser runner $RUNNER_APP ($(val runnerFqdn))"
 
 BOUND=0
-if [ -n "$DOMAIN" ]; then
+[ -n "$INITIAL_DOMAIN" ] && BOUND=1
+if [ -n "$DOMAIN" ] && [ "$BOUND" = 0 ]; then
   step "Custom domain $DOMAIN"
   cname="$( (command -v dig >/dev/null && dig +short CNAME "$DOMAIN") || (nslookup -type=CNAME "$DOMAIN" 2>/dev/null | sed -n 's/.*canonical name = //p') || true)"
   cname="${cname%.}"
@@ -184,8 +193,8 @@ step "Done"
 cat <<EOF
 
 DNS record to add at the registrar of ${DOMAIN:-your domain}:
-  Type CNAME   Host ${DOMAIN%%.*}   Value $HOST   TTL 3600
-  (full name ${DOMAIN:-<subdomain>.<domain>}; Static Web Apps validates a subdomain by this CNAME, no TXT record needed)
+  Type CNAME   Host ${DOMAIN:-<subdomain>.<domain>}   Value $HOST   TTL 3600
+  (DNS only; for a Cloudflare apex use Name @ and keep the Azure verification TXT record)
 
 GitHub repository variables (Settings > Secrets and variables > Actions > Variables):
   AZURE_CLIENT_ID          $CLIENT_ID

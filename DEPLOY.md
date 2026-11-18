@@ -4,13 +4,22 @@ The production target is **Azure Static Web Apps** with the API as **Azure Funct
 
 Other ways to run it (Node, Docker, a Cloudflare-style Worker) are at the end.
 
+## Live deployment
+
+Deployed on 18 November 2026 to `rg-agent-ready-check` in West Europe:
+
+- Site: https://kind-pond-004d16e03.8.azurestaticapps.net
+- GitHub Actions deploys the site, API and browser runner on pushes to `main`, using OIDC.
+- Live verification covered browser-enabled scans, Blob Storage report persistence and shareable report pages.
+- Planned domain: **https://isainative.dev**. The existing repository scanner must first move to **https://repo.isainative.dev**. Cutover is pending Cloudflare access; the current apex and `www` bindings are preserved. Follow the [ordered domain migration procedure](docs/PUBLISHING.md#domain-migration-isainativedev-and-repoisainativedev), including TXT validation for the apex.
+
 ## Architecture on Azure
 
 ```
 visitor / agent
       |
       v
-Azure Static Web Apps (Free plan, global edge, free TLS certificate, custom domain agent.isainative.dev)
+Azure Static Web Apps (Free plan, global edge, free TLS certificate, planned custom domain isainative.dev)
   |-- /assets/*  -> static files (CSS, JS, pixel font, favicon) from the Static Web Apps CDN
   |-- /api/*     -> managed Azure Function "site" (Node 22)
   `-- every other path -> rewritten to /api/__site -> the same function
@@ -70,7 +79,7 @@ The runner is **optional** (`--no-browser-runner` / `-NoBrowserRunner`). Without
 
 The image is built by GitHub Actions and pushed to GitHub Container Registry (free for public images), so no Azure Container Registry is needed (the v0.1.0 kit paid about 5 USD a month for one). The Container App pulls it anonymously, which needs the package to be public (one click, see PUBLISHING.md).
 
-Cold start: when the runner has scaled to zero, the first browser scan waits for a replica to start and pull the image. If that pushes the scan past the 45-second API limit, the report shows the browser checks as failed with the runner's error and a second scan a minute later succeeds. Setting `minReplicas` to 1 removes the cold start at idle rates (see the table). This is a known trade-off, not measured on Azure yet.
+Cold start: when the runner has scaled to zero, the first browser scan waits for a replica to start and pull the image. A cold start can exceed the runner request budget or the 45-second API limit; retry the scan once the runner is warm. On 18 November 2026, a live cold-runner scan returned a browser timeout, while the immediate warm-runner retry completed successfully in about 8.6 seconds and saved a shareable report. Setting `minReplicas` to 1 removes scale-to-zero cold starts at idle rates (see the table).
 
 ## Monthly cost
 
@@ -98,7 +107,8 @@ For GitHub OIDC setup, sign in with `gh auth login` first, or supply `--oidc-sub
 |---|---|---|---|
 | `--github-repo OWNER/REPO` | `-GitHubRepo` | (required) | the repository whose workflows may deploy |
 | `--oidc-subject SUBJECT` | `-OidcSubject` | discovered with `gh` | exact subject for the production workflow; useful in Cloud Shell without a GitHub CLI login |
-| `--custom-domain HOST` | `-CustomDomain` | | bind it once its CNAME is live (checked first) |
+| `--custom-domain HOST` | `-CustomDomain` | | bind a subdomain after CNAME setup, or reuse a Ready TXT-validated domain |
+| `--domain-validation-method METHOD` | `-DomainValidationMethod` | `cname-delegation` | use `dns-txt-token` for a prevalidated apex domain |
 | `--resource-group` | `-ResourceGroup` | `rg-agent-ready-check` | |
 | `--location` | `-Location` | `westeurope` | storage and runner region |
 | `--swa-location` | `-SwaLocation` | `westeurope` | Static Web App region |
@@ -112,6 +122,8 @@ For GitHub OIDC setup, sign in with `gh auth login` first, or supply `--oidc-sub
 | `-y` | `-Yes` | | no prompt |
 
 Steps: resolve the GitHub OIDC subject, register the resource providers, create the resource group, create the Entra app registration `agent-ready-check-github` with a federated credential for the repository's `production` environment and Contributor on the resource group, deploy `infra/main.bicep`, check the CNAME and bind the custom domain if it is live, then print the DNS record and the GitHub variables. Safe to re-run. No secret is printed or written.
+
+For an apex, first complete TXT ownership validation and DNS cutover using the publishing guide. Then pass `--custom-domain isainative.dev --domain-validation-method dns-txt-token` (PowerShell: `-CustomDomain isainative.dev -DomainValidationMethod dns-txt-token`). The scripts require the Azure hostname binding to be `Ready` before deploying in this mode and preserve the custom origin in the initial deployment. Cloudflare flattens apex CNAMEs, so a literal CNAME lookup is not a valid readiness check for the apex.
 
 The managed function has its own committed `api/package-lock.json`. Both CI and deployment run `npm ci --prefix api --omit=dev` to install its runtime dependency reproducibly.
 
