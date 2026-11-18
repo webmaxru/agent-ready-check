@@ -11,7 +11,8 @@
   OWNER/REPO, environment "production", with Contributor on the resource group. No secret is created for GitHub;
   the workflows sign in with OIDC. At the end it prints the GitHub repository variables to set.
 
-  Runs in Azure Cloud Shell (PowerShell) as is, and in PowerShell 7+ or Windows PowerShell 5.1 with the Azure CLI.
+  Runs in Azure Cloud Shell (PowerShell), and in PowerShell 7+ or Windows PowerShell 5.1 with the Azure CLI.
+  GitHub OIDC discovery needs gh signed in, or an explicit -OidcSubject.
   Bash twin: infra/deploy.sh.
 
 .EXAMPLE
@@ -22,6 +23,7 @@
 [CmdletBinding()]
 param(
   [string]$GitHubRepo = '',
+  [string]$OidcSubject = '',
   [string]$CustomDomain = '',
   [string]$ResourceGroup = 'rg-agent-ready-check',
   [string]$Location = 'westeurope',
@@ -62,17 +64,41 @@ function Invoke-Az {
   param([Parameter(Mandatory = $true)][string[]]$Arguments, [switch]$AllowFail)
   $prev = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
-  try { $out = & az @Arguments 2>&1; $code = $LASTEXITCODE } finally { $ErrorActionPreference = $prev }
+  $stderr = [System.IO.Path]::GetTempFileName()
+  try {
+    $out = & az @Arguments 2>$stderr
+    $code = $LASTEXITCODE
+    $errText = [System.IO.File]::ReadAllText($stderr).Trim()
+  } finally {
+    Remove-Item -Force $stderr
+    $ErrorActionPreference = $prev
+  }
   $text = (@($out) | ForEach-Object { "$_" }) -join "`n"
   if ($code -ne 0) {
     if ($AllowFail) { return $null }
-    throw ("az {0} failed: {1}" -f ($Arguments[0..1] -join ' '), $text)
+    throw ("az {0} failed: {1}`n{2}" -f ($Arguments[0..1] -join ' '), $text, $errText)
   }
+  if ($errText) { Write-Warning $errText }
   return $text.Trim()
 }
 
 if (-not $SkipOidc -and $GitHubRepo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') {
   Exit-WithHint '-GitHubRepo OWNER/REPO is required for the GitHub sign-in' './infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check (or -SkipOidc)'
+}
+if (-not $SkipOidc) {
+  if (-not $OidcSubject) {
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+      Exit-WithHint 'gh is required to discover the repository OIDC subject' 'install and sign in to gh, or pass -OidcSubject with the exact production subject from GitHub'
+    }
+    $prefix = & gh api "repos/$GitHubRepo/actions/oidc/customization/sub" --jq 'if .use_default then .sub_claim_prefix else empty end'
+    if ($LASTEXITCODE -ne 0 -or -not $prefix) {
+      Exit-WithHint 'could not discover the default GitHub OIDC subject' 'sign in with gh auth login, or pass -OidcSubject with the exact production subject from GitHub'
+    }
+    $OidcSubject = "${prefix}:environment:$EnvironmentName"
+  }
+  if ($OidcSubject -notmatch '^[A-Za-z0-9_./:@%-]+$') {
+    Exit-WithHint '-OidcSubject contains unsupported characters' 'copy the exact subject claim from the azure/login workflow log'
+  }
 }
 $CustomDomain = ($CustomDomain.ToLowerInvariant() -replace '^https?://', '' -replace '/.*$', '').TrimEnd('.')
 $OwnerLc = ''
@@ -120,11 +146,12 @@ if (-not $SkipOidc) {
   } else { Write-Ok "app registration $appDisplay exists" }
   $spObjectId = Invoke-Az @('ad', 'sp', 'list', '--filter', "appId eq '$clientId'", '--query', '[0].id', '-o', 'tsv')
   if (-not $spObjectId) { $spObjectId = Invoke-Az @('ad', 'sp', 'create', '--id', $clientId, '--query', 'id', '-o', 'tsv') }
-  $subject = "repo:${GitHubRepo}:environment:$EnvironmentName"
+  $subject = $OidcSubject
   $count = Invoke-Az @('ad', 'app', 'federated-credential', 'list', '--id', $clientId, '--query', "[?subject=='$subject'] | length(@)", '-o', 'tsv')
   if ($count -eq '0') {
     $credName = ("github-$EnvironmentName-$GitHubRepo" -replace '[/.]', '-')
     if ($credName.Length -gt 100) { $credName = $credName.Substring(0, 100) }
+    $credId = Invoke-Az @('ad', 'app', 'federated-credential', 'list', '--id', $clientId, '--query', "[?name=='$credName'] | [0].id", '-o', 'tsv')
     $cred = [ordered]@{
       name        = $credName
       issuer      = 'https://token.actions.githubusercontent.com'
@@ -135,7 +162,11 @@ if (-not $SkipOidc) {
     $tmp = [System.IO.Path]::GetTempFileName()
     try {
       [System.IO.File]::WriteAllText($tmp, ($cred | ConvertTo-Json -Compress))
-      Invoke-Az @('ad', 'app', 'federated-credential', 'create', '--id', $clientId, '--parameters', "@$tmp", '-o', 'none') | Out-Null
+      if ($credId) {
+        Invoke-Az @('ad', 'app', 'federated-credential', 'update', '--id', $clientId, '--federated-credential-id', $credId, '--parameters', "@$tmp", '-o', 'none') | Out-Null
+      } else {
+        Invoke-Az @('ad', 'app', 'federated-credential', 'create', '--id', $clientId, '--parameters', "@$tmp", '-o', 'none') | Out-Null
+      }
     } finally { Remove-Item -Force $tmp -ErrorAction SilentlyContinue }
     Write-Ok "federated credential for $subject"
   } else { Write-Ok "federated credential for $subject exists" }

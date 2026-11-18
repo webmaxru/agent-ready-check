@@ -9,12 +9,14 @@
 # <owner>/<repo>, environment "production", with Contributor on the resource group. No secret is created for
 # GitHub; the workflows sign in with OIDC. At the end it prints the GitHub repository variables to set.
 #
-# Runs in Azure Cloud Shell (Bash) as is. Needs az (signed in), curl and python3. PowerShell twin: infra/deploy.ps1.
+# Needs az (signed in), curl and python3, plus gh (signed in) unless --oidc-subject is supplied.
+# PowerShell twin: infra/deploy.ps1.
 #
 #   ./infra/deploy.sh --github-repo webmaxru/agent-ready-check --custom-domain agent.isainative.dev
 #
 # Options
 #   --github-repo OWNER/REPO   repository whose workflows may deploy (required unless --skip-oidc)
+#   --oidc-subject SUBJECT     exact GitHub OIDC subject (default: discover with gh)
 #   --custom-domain HOST       bind this domain (only once its CNAME points at the app; the script checks)
 #   --resource-group NAME      default rg-agent-ready-check
 #   --location REGION          storage and runner region, default westeurope
@@ -30,7 +32,7 @@
 set -euo pipefail
 
 RG="rg-agent-ready-check"; LOCATION="westeurope"; SWA_LOCATION="westeurope"; NAME="agent-ready-check"; SKU="Free"
-SUBSCRIPTION=""; DOMAIN=""; REPO=""; RUNNER_IMAGE=""; RUNNER=1; OIDC=1; SET_VARS=0; YES=0
+SUBSCRIPTION=""; DOMAIN=""; REPO=""; OIDC_SUBJECT=""; RUNNER_IMAGE=""; RUNNER=1; OIDC=1; SET_VARS=0; YES=0
 ENVIRONMENT="production"
 PLACEHOLDER_IMAGE="mcr.microsoft.com/k8se/quickstart:latest"
 INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,6 +46,7 @@ die()  { printf '\nERROR: %s\n' "$1" >&2; [ -n "${2:-}" ] && printf 'Next:  %s\n
 while [ $# -gt 0 ]; do
   case "$1" in
     --github-repo) REPO="${2:-}"; shift 2 ;;
+    --oidc-subject) OIDC_SUBJECT="${2:-}"; shift 2 ;;
     --custom-domain) DOMAIN="${2:-}"; shift 2 ;;
     --resource-group) RG="${2:-}"; shift 2 ;;
     --location) LOCATION="${2:-}"; shift 2 ;;
@@ -56,7 +59,7 @@ while [ $# -gt 0 ]; do
     --skip-oidc) OIDC=0; shift ;;
     --set-github-variables) SET_VARS=1; shift ;;
     -y|--yes) YES=1; shift ;;
-    -h|--help) sed -n '2,31p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
     *) die "unknown option $1" "./infra/deploy.sh --help" ;;
   esac
 done
@@ -64,6 +67,17 @@ done
 case "$SKU" in Free|Standard) ;; *) die "--sku must be Free or Standard" ;; esac
 if [ "$OIDC" = 1 ] && ! printf '%s' "$REPO" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'; then
   die "--github-repo OWNER/REPO is required for the GitHub sign-in" "./infra/deploy.sh --github-repo webmaxru/agent-ready-check (or --skip-oidc)"
+fi
+if [ "$OIDC" = 1 ]; then
+  if [ -z "$OIDC_SUBJECT" ]; then
+    command -v gh >/dev/null 2>&1 || die "gh is required to discover the repository OIDC subject" "install and sign in to gh, or pass --oidc-subject with the exact production subject from GitHub"
+    prefix="$(gh api "repos/$REPO/actions/oidc/customization/sub" --jq 'if .use_default then .sub_claim_prefix else empty end')" \
+      || die "could not discover the default GitHub OIDC subject" "sign in with gh auth login, or pass --oidc-subject with the exact production subject from GitHub"
+    [ -n "$prefix" ] || die "the repository uses a custom OIDC subject" "pass --oidc-subject with the exact production subject from GitHub"
+    OIDC_SUBJECT="$prefix:environment:$ENVIRONMENT"
+  fi
+  printf '%s' "$OIDC_SUBJECT" | grep -Eq '^[A-Za-z0-9_./:@%-]+$' \
+    || die "--oidc-subject contains unsupported characters" "copy the exact subject claim from the azure/login workflow log"
 fi
 DOMAIN="$(printf '%s' "$DOMAIN" | tr '[:upper:]' '[:lower:]' | sed 's#^https\?://##; s#/.*$##; s#\.$##')"
 OWNER_LC="$(printf '%s' "${REPO%%/*}" | tr '[:upper:]' '[:lower:]')"
@@ -104,12 +118,19 @@ if [ "$OIDC" = 1 ]; then
   else ok "app registration $APP_DISPLAY exists"; fi
   SP_OBJECT_ID="$(az ad sp list --filter "appId eq '$CLIENT_ID'" --query '[0].id' -o tsv)"
   [ -z "$SP_OBJECT_ID" ] && SP_OBJECT_ID="$(az ad sp create --id "$CLIENT_ID" --query id -o tsv)"
-  SUBJECT="repo:$REPO:environment:$ENVIRONMENT"
+  SUBJECT="$OIDC_SUBJECT"
   if az ad app federated-credential list --id "$CLIENT_ID" --query "[?subject=='$SUBJECT'] | length(@)" -o tsv | grep -qx 0; then
     TMP="$(mktemp)"
+    CRED_NAME="github-$(printf '%s' "$ENVIRONMENT-$REPO" | tr '/.' '--')"
+    CRED_NAME="${CRED_NAME:0:100}"
+    CRED_ID="$(az ad app federated-credential list --id "$CLIENT_ID" --query "[?name=='$CRED_NAME'] | [0].id" -o tsv)"
     printf '{"name":"github-%s","issuer":"https://token.actions.githubusercontent.com","subject":"%s","audiences":["api://AzureADTokenExchange"],"description":"GitHub Actions, %s, environment %s"}' \
-      "$(printf '%s' "$ENVIRONMENT-$REPO" | tr '/.' '--' | cut -c1-100)" "$SUBJECT" "$REPO" "$ENVIRONMENT" > "$TMP"
-    az ad app federated-credential create --id "$CLIENT_ID" --parameters "@$TMP" -o none
+      "${CRED_NAME#github-}" "$SUBJECT" "$REPO" "$ENVIRONMENT" > "$TMP"
+    if [ -n "$CRED_ID" ]; then
+      az ad app federated-credential update --id "$CLIENT_ID" --federated-credential-id "$CRED_ID" --parameters "@$TMP" -o none
+    else
+      az ad app federated-credential create --id "$CLIENT_ID" --parameters "@$TMP" -o none
+    fi
     rm -f "$TMP"
     ok "federated credential for $SUBJECT"
   else ok "federated credential for $SUBJECT exists"; fi

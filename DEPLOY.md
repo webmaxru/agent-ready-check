@@ -90,11 +90,14 @@ For comparison: Standard plan +9 USD/month; Functions Premium EP1 for browser ch
 
 ## What `infra/deploy.sh` / `infra/deploy.ps1` do
 
-Run once from Azure Cloud Shell (nothing to install). Both scripts take the same options:
+Run once from Azure Cloud Shell (Azure CLI is already installed). Both scripts take the same options:
+
+For GitHub OIDC setup, sign in with `gh auth login` first, or supply `--oidc-subject` / `-OidcSubject` explicitly. The scripts read the repository's OIDC settings instead of assuming the legacy name-only subject. GitHub now uses immutable owner/repository IDs for newly created, renamed or transferred repositories; see [Microsoft's migration guidance](https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-github-immutable-subjects). For this repository, the production subject is `repo:webmaxru@1560278/agent-ready-check@1443925145:environment:production`. Re-running setup updates the existing named credential when its subject has changed.
 
 | bash | PowerShell | Default | Meaning |
 |---|---|---|---|
 | `--github-repo OWNER/REPO` | `-GitHubRepo` | (required) | the repository whose workflows may deploy |
+| `--oidc-subject SUBJECT` | `-OidcSubject` | discovered with `gh` | exact subject for the production workflow; useful in Cloud Shell without a GitHub CLI login |
 | `--custom-domain HOST` | `-CustomDomain` | | bind it once its CNAME is live (checked first) |
 | `--resource-group` | `-ResourceGroup` | `rg-agent-ready-check` | |
 | `--location` | `-Location` | `westeurope` | storage and runner region |
@@ -108,9 +111,11 @@ Run once from Azure Cloud Shell (nothing to install). Both scripts take the same
 | `--set-github-variables` | `-SetGitHubVariables` | | write the variables with `gh` |
 | `-y` | `-Yes` | | no prompt |
 
-Steps: register the resource providers, create the resource group, create the Entra app registration `agent-ready-check-github` with a federated credential for `repo:OWNER/REPO:environment:production` and Contributor on the resource group, deploy `infra/main.bicep`, check the CNAME and bind the custom domain if it is live, then print the DNS record and the GitHub variables. Safe to re-run. No secret is printed or written.
+Steps: resolve the GitHub OIDC subject, register the resource providers, create the resource group, create the Entra app registration `agent-ready-check-github` with a federated credential for the repository's `production` environment and Contributor on the resource group, deploy `infra/main.bicep`, check the CNAME and bind the custom domain if it is live, then print the DNS record and the GitHub variables. Safe to re-run. No secret is printed or written.
 
-Checked offline on 5 November 2026: Bicep CLI 0.48.1 builds `main.bicep` with 0 warnings; `deploy.sh` passes `bash -n` and shellcheck; `deploy.ps1` parses in PowerShell 7.6.9 and is ASCII-only; both scripts ran end to end against a stand-in `az`. Not yet run against Azure.
+The managed function has its own committed `api/package-lock.json`. Both CI and deployment run `npm ci --prefix api --omit=dev` to install its runtime dependency reproducibly.
+
+Checked offline on 5 November 2026: Bicep CLI 0.48.1 builds `main.bicep` with 0 warnings; `deploy.sh` passes `bash -n` and shellcheck; `deploy.ps1` parses in PowerShell 7.6.9 and is ASCII-only; both scripts ran end to end against a stand-in `az`. Live infrastructure provisioning succeeded in West Europe on 18 November 2026. That run also verified the immutable OIDC credential update and the PowerShell fix that keeps Azure CLI warnings separate from JSON output.
 
 ## The Container Apps kit from v0.1.0 is retired
 
