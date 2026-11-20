@@ -62,6 +62,19 @@ test('Azure handler forwards join streams to the app without buffering oversized
   assert.equal(pulls, 1);
 });
 
+test('Azure join limits ignore client-controlled Cloudflare IP headers', async () => {
+  const handle = createAzureHandler({ BASE_URL: BASE }, { store: memoryStore() });
+  let response;
+  for (let i = 0; i < 31; i++) {
+    response = await handle(new Request(`${BASE}/api/league`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.7', 'cf-connecting-ip': `198.51.100.${i + 1}` },
+      body: '{}',
+    }));
+  }
+  assert.equal(response.status, 429);
+});
+
 test('parseConnectionString reads Azure and Azurite connection strings', () => {
   const a = parseConnectionString('DefaultEndpointsProtocol=https;AccountName=arc1;AccountKey=a2V5;EndpointSuffix=core.windows.net');
   assert.deepEqual(a, { account: 'arc1', key: 'a2V5', blobEndpoint: 'https://arc1.blob.core.windows.net' });

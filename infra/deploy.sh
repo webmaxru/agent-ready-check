@@ -26,6 +26,8 @@
 #   --no-browser-runner        skip the runner; browser checks then show as "skipped"
 #   --skip-oidc                do not create the Entra app / federated credential / role assignment
 #   --set-github-variables     also write the repository variables with the GitHub CLI (gh, logged in)
+#   LEAGUE_ADMIN_TOKEN         environment variable for League moderation (optional)
+#   LEAGUE_REMOVAL_URL         environment variable for the owner removal link (optional)
 #   -y, --yes                  no confirmation prompt
 set -euo pipefail
 
@@ -133,7 +135,7 @@ deploy() { # $1 = custom domain or empty
   az deployment group create -g "$RG" -n "agent-ready-check-$(date +%Y%m%d%H%M%S)" -f "$INFRA_DIR/main.bicep" \
     -p appName="$NAME" location="$LOCATION" swaLocation="$SWA_LOCATION" swaSku="$SKU" customDomain="$1" \
        deployBrowserRunner="$([ "$RUNNER" = 1 ] && echo true || echo false)" runnerImage="$RUNNER_IMAGE" \
-       deployerPrincipalId="$SP_OBJECT_ID" \
+       deployerPrincipalId="$SP_OBJECT_ID" leagueAdminToken="${LEAGUE_ADMIN_TOKEN:-}" leagueRemovalUrl="${LEAGUE_REMOVAL_URL:-}" \
     --query properties.outputs -o json
 }
 

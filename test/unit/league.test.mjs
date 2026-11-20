@@ -1,7 +1,7 @@
 // The Agent-Ready League: rules (engine), stores and routes. No network.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applySubmission, snapshotOf, submissionProblem, rankBoard, standing, crownsOf, projectedRank, quests, divisionOf, playerLevel, gainOf, DAY, WEEK, XP } from '../../src/league/engine.mjs';
+import { applySubmission, snapshotOf, submissionProblem, rankBoard, standing, crownsOf, projectedRank, quests, divisionOf, playerLevel, gainOf, normalizeHost, DAY, WEEK, XP } from '../../src/league/engine.mjs';
 import { memoryLeague, prune, docLeague, MAX_ENTRIES, FORGET_MS } from '../../src/league/store.mjs';
 import { fsLeague, fsStore } from '../../src/store/fs.mjs';
 import { azureBlobStore } from '../../src/store/azure-blob.mjs';
@@ -77,11 +77,13 @@ test('submission rules: stored, fresh, public domain', () => {
   assert.match(submissionProblem(report('localhost', 50), T0), /public domain/);
   assert.match(submissionProblem({ ...report('example.com', 50), id: undefined }, T0), /stored/);
   assert.equal(submissionProblem(report('example.com', 50), T0), null);
+  assert.match(submissionProblem({ ...report('example.com', 50), url: 'https://anyone@example.com/' }, T0), /credentials/);
 });
 
 test('one standing per site: www folds into the apex, only home pages, no redirects to other sites, no IPs or ports', () => {
   const www = report('www.example.com', 50);
   assert.equal(snapshotOf(www).host, 'example.com');
+  assert.equal(normalizeHost('www.www.example.com'), 'example.com');
   const redirected = { ...report('a.example', 50), final_url: 'https://www.a.example/en/' };
   assert.equal(submissionProblem(redirected, T0), null);
   assert.equal(snapshotOf(redirected).host, 'a.example');
@@ -104,17 +106,24 @@ test('WebMCP achievement requires a successful browser scan', () => {
 
 test('lifetime climb baseline and rolling ranking history survive chart compaction', () => {
   let e = submit(null, report('climber.example', 40, T0)).entry;
-  for (let day = 1; day <= 31; day++) e = submit(e, report('climber.example', 49, T0 + day * DAY), T0 + day * DAY).entry;
+  for (let scan = 1; scan <= 124; scan++) {
+    const at = T0 + scan * 6 * 3_600_000;
+    e = submit(e, report('climber.example', scan % 2 ? 49 : 48, at), at).entry;
+  }
   assert.equal(e.history.length, 30);
   assert.equal(e.first_score, 40);
+  assert.ok(e.rank_history.length <= 121);
   const priorRankHistory = structuredClone(e.rank_history);
-  const next = submit(e, report('climber.example', 65, T0 + 32 * DAY), T0 + 32 * DAY).entry;
+  const nextAt = T0 + 125 * 6 * 3_600_000;
+  assert.equal(submit(e, report('climber.example', 65, nextAt - 1), nextAt - 1).error, 'frequency');
+  const next = submit(e, report('climber.example', 65, nextAt), nextAt).entry;
   assert.deepEqual(e.rank_history, priorRankHistory);
   assert.ok(next.achievements.climber);
   assert.ok(next.achievements.rocket);
-  assert.equal(gainOf(next, T0 + 32 * DAY), 16);
-  const aged = submit(next, report('climber.example', 65, T0 + 63 * DAY), T0 + 63 * DAY).entry;
-  assert.equal(gainOf(aged, T0 + 63 * DAY), 0);
+  assert.equal(gainOf(next, nextAt), 16);
+  const agedAt = nextAt + 31 * DAY;
+  const aged = submit(next, report('climber.example', 65, agedAt), agedAt).entry;
+  assert.equal(gainOf(aged, agedAt), 0);
 });
 
 test('League activity and last-scan display use the report scan time', () => {
@@ -233,17 +242,20 @@ test('rendering escapes host names and stays accessible', () => {
 });
 
 test('League action and teaser XP colors override their dark-console defaults', () => {
-  assert.match(LEAGUE_CSS, /\.console \.btn\{color:var\(--paper\)\}/);
+  assert.match(LEAGUE_CSS, /\.console \.btn\{color:#fff\}/);
   assert.match(LEAGUE_CSS, /\.teaser \.xpn\{color:var\(--mint\)\}/);
+  assert.match(LEAGUE_CSS, /\.events \.ev\{/);
+  assert.doesNotMatch(LEAGUE_CSS, /(?<!events )\.ev\{/);
 });
 
 // ---- routes
 function makeApp(o = {}) {
   let now = T0;
+  const clock = () => now;
   const app = createApp({
     scan: async (url) => fakeReport(url, { scanned_at: new Date(now).toISOString() }),
-    store: memoryStore(), rateLimit: memoryRateLimiter({ limit: 100, windowSeconds: 600 }), resolve: async () => ['93.184.216.34'],
-    browserAvailable: false, now: () => now, ...o,
+    store: memoryStore({ now: clock }), rateLimit: memoryRateLimiter({ limit: 100, windowSeconds: 600 }), resolve: async () => ['93.184.216.34'],
+    browserAvailable: false, now: clock, ...o,
   });
   return { app, advance: (ms) => { now += ms; } };
 }
@@ -306,6 +318,50 @@ test('routes: API join by url, validation, cross-site form posts, moderation tok
   assert.equal((await open.request(`${B}/api/league/example.com`, { method: 'DELETE', headers: { authorization: 'Bearer secret' } })).status, 404);
 });
 
+test('report panels keep quests and standings when submissions are ineligible or suppressed', async () => {
+  const store = memoryStore({ now: () => T0 });
+  const token = 'moderation-test-token';
+  const { app, advance } = makeApp({ store, leagueAdminToken: token });
+  const scan = await (await json(app, '/api/scan', { url: 'https://member.example/' })).json();
+  assert.equal((await json(app, '/api/league', { report_id: scan.id })).status, 201);
+
+  advance(DAY);
+  const deepId = await store.put(fakeReport('https://member.example/docs', { scanned_at: new Date(T0 + DAY).toISOString() }));
+  const deepPage = await (await app.request(`${B}/r/${deepId}`)).text();
+  assert.match(deepPage, /Next quests/);
+  assert.match(deepPage, /Your standing is/);
+  assert.doesNotMatch(deepPage, /action="\/league\/join"/);
+
+  assert.equal((await app.request(`${B}/api/league/member.example`, { method: 'DELETE', headers: { authorization: ['Bearer', token].join(' ') } })).status, 204);
+  const removedPage = await (await app.request(`${B}/r/${scan.id}`)).text();
+  assert.match(removedPage, /was removed from the League/);
+  assert.match(removedPage, /Next quests/);
+  assert.doesNotMatch(removedPage, /action="\/league\/join"/);
+});
+
+test('League read snapshots are reused briefly and invalidated by local mutations', async () => {
+  const underlying = memoryLeague({ now: () => T0 });
+  let reads = 0;
+  const league = { ...underlying, list: async () => { reads++; return underlying.list(); } };
+  const token = 'moderation-test-token';
+  const { app } = makeApp({ league, leagueAdminToken: token });
+  await app.request(`${B}/api/league`);
+  await app.request(`${B}/api/league`);
+  assert.equal(reads, 1);
+
+  assert.equal((await json(app, '/api/league', { url: 'https://cache.example' })).status, 201);
+  assert.equal(reads, 2);
+  await app.request(`${B}/api/league`);
+  assert.equal(reads, 2);
+  const auth = { authorization: ['Bearer', token].join(' ') };
+  assert.equal((await app.request(`${B}/api/league/cache.example`, { method: 'DELETE', headers: auth })).status, 204);
+  await app.request(`${B}/api/league`);
+  assert.equal(reads, 3);
+  assert.equal((await app.request(`${B}/api/league/cache.example/restore`, { method: 'POST', headers: auth })).status, 204);
+  await app.request(`${B}/api/league`);
+  assert.equal(reads, 4);
+});
+
 test('removal leaves a tombstone: submissions cannot re-add the host until an admin restores it (all doc stores)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'league-t-'));
   try {
@@ -354,6 +410,18 @@ test('routes: reports older than 7 days are refused with 422', async () => {
   assert.equal(r.status, 422);
 });
 
+test('a standing cannot be updated more than once in six hours', async () => {
+  const store = memoryStore({ now: () => T0 });
+  const { app, advance } = makeApp({ store });
+  const firstId = await store.put(fakeReport('https://interval.example/', { scanned_at: new Date(T0).toISOString() }));
+  assert.equal((await json(app, '/api/league', { report_id: firstId })).status, 201);
+  advance(5 * 3_600_000);
+  const nextId = await store.put(fakeReport('https://interval.example/', { scanned_at: new Date(T0 + 5 * 3_600_000).toISOString(), score: 60 }));
+  const refused = await json(app, '/api/league', { report_id: nextId });
+  assert.equal(refused.status, 409);
+  assert.match((await refused.json()).detail, /once every six hours/);
+});
+
 test('MCP get_league reads boards and standings', async () => {
   const { app } = makeApp({ baseUrl: 'https://canonical.example' });
   await json(app, '/api/league', { url: 'https://example.com' });
@@ -376,6 +444,16 @@ test('literal .md hostnames resolve before Markdown aliases, with Accept negotia
   const alias = await app.request(`${B}/league/example.com.md`, { headers: { accept: 'text/markdown' } });
   assert.match(alias.headers.get('content-type'), /text\/markdown/);
   assert.match(await alias.text(), /# example\.com on the Agent-Ready League/);
+  const literalMd = await app.request(`${B}/league/example.com.md?format=markdown`);
+  assert.match(await literalMd.text(), /# example\.com\.md on the Agent-Ready League/);
+  const alternate = await app.request(`${B}/league/example.com?format=markdown`);
+  assert.match(await alternate.text(), /# example\.com on the Agent-Ready League/);
+  assert.match((await app.request(`${B}/league/example.com`)).headers.get('link'), /example\.com\?format=markdown/);
+
+  await json(app, '/api/league', { url: 'https://literal-only.example.md/' });
+  const negotiated = await app.request(`${B}/league/literal-only.example.md`, { headers: { accept: 'text/markdown' } });
+  assert.match(negotiated.headers.get('vary'), /Accept/);
+  assert.match(negotiated.headers.get('content-type'), /text\/markdown/);
 });
 
 test('League join bodies are byte-limited while streaming and storage failures are not empty boards', async () => {
@@ -459,6 +537,7 @@ test('azure league: board.json lives in its own container and is written with ET
 
 test('d1 league: one row per host, compare-and-swap on version', async () => {
   const rows = new Map(); let schemaRuns = 0; let submitRace = null; let restoreRace = false;
+  let d1Now = T0;
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     async run() {
@@ -517,11 +596,13 @@ test('d1 league: one row per host, compare-and-swap on version', async () => {
     },
   });
   const db = { prepare: (sql) => stmt(sql), batch: async (l) => { const out = []; for (const x of l) out.push(await x.run()); return out; } };
-  const lg = d1Store(db, { now: () => T0 }).league;
+  const lg = d1Store(db, { now: () => d1Now }).league;
   const snap = snapshotOf(report('d.example', 70));
   assert.equal((await lg.submit('d.example', (p) => applySubmission(p, snap, T0))).changed, true);
   const snap2 = snapshotOf(report('d.example', 75, T0 + DAY));
+  d1Now = T0 + 8 * DAY;
   assert.equal((await lg.submit('d.example', (p) => applySubmission(p, snap2, T0 + DAY))).entry.score, 75);
+  assert.equal(rows.get('d.example').updated, T0 + DAY);
   assert.equal((await lg.list()).length, 1);
   assert.equal((await lg.get('D.example')).score, 75);
   assert.equal(await lg.remove('d.example'), true);
@@ -537,7 +618,7 @@ test('d1 league: one row per host, compare-and-swap on version', async () => {
   const newer = snapshotOf(report('d.example', 85, T0 + 2 * DAY));
   const newerEntry = applySubmission(await lg.get('d.example'), newer, T0 + 2 * DAY).entry;
   submitRace = { host: 'd.example', entry: newerEntry };
-  const older = snapshotOf(report('d.example', 80, T0 + DAY + 1000));
+  const older = snapshotOf(report('d.example', 80, T0 + DAY - 1000));
   assert.equal((await lg.submit('d.example', (p) => applySubmission(p, older, T0 + 2 * DAY))).error, 'stale');
   assert.equal((await lg.get('d.example')).score, 85);
 
@@ -564,12 +645,12 @@ test('d1 league: one row per host, compare-and-swap on version', async () => {
 
 test('concurrent submissions to every store lose no updates', async () => {
   const hosts = Array.from({ length: 12 }, (_, i) => `site${i}.example`);
-  const run = async (lg) => {
-    await Promise.all(hosts.map((h) => lg.submit(h, (p) => applySubmission(p, snapshotOf(report(h, 50)), T0))));
+  const run = async (lg, other = lg) => {
+    await Promise.all(hosts.map((h, i) => (i % 2 ? other : lg).submit(h, (p) => applySubmission(p, snapshotOf(report(h, 50)), T0))));
     assert.equal((await lg.list()).length, hosts.length);
     // the same site from two clients at once: exactly one of the two different reports is the latest and nothing is lost
     const [a, b] = [snapshotOf(report('site0.example', 60, T0 + DAY)), snapshotOf(report('site0.example', 70, T0 + 2 * DAY))];
-    await Promise.all([a, b].map((s) => lg.submit('site0.example', (p) => applySubmission(p, s, T0 + 2 * DAY))));
+    await Promise.all([lg, other].map((store, i) => store.submit('site0.example', (p) => applySubmission(p, [a, b][i], T0 + 2 * DAY))));
     const e = await lg.get('site0.example');
     assert.equal(e.score, 70);
     assert.equal(e.history.length, 3);
@@ -577,17 +658,22 @@ test('concurrent submissions to every store lose no updates', async () => {
   };
   await run(memoryLeague({ now: () => T0 }));
   const dir = mkdtempSync(join(tmpdir(), 'league-c-'));
-  try { await run(fsLeague({ dir, now: () => T0 })); } finally { rmSync(dir, { recursive: true, force: true }); }
+  try { await run(fsLeague({ dir, now: () => T0 }), fsLeague({ dir, now: () => T0 })); } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('routes: www and apex are one standing, deep pages and redirects are refused, an older report cannot replace a newer one', async () => {
-  const store = memoryStore();
-  const { app } = makeApp({ store });
+  const store = memoryStore({ now: () => T0 });
+  const { app, advance } = makeApp({ store });
   const put = (url, over = {}) => store.put(fakeReport(url, { scanned_at: new Date(T0).toISOString(), ...over }));
   const idWww = await put('https://www.canon.example/');
-  const idApex = await put('https://canon.example/', { scanned_at: new Date(T0 + 1000).toISOString(), score: 55 });
+  const idApex = await put('https://canon.example/', { scanned_at: new Date(T0 + 6 * 3_600_000).toISOString(), score: 55 });
   assert.equal((await json(app, '/api/league', { report_id: idWww })).status, 201);
+  advance(6 * 3_600_000);
   assert.equal((await (await json(app, '/api/league', { report_id: idApex })).json()).host, 'canon.example');
+  advance(6 * 3_600_000);
+  const idDoubleWww = await put('https://www.www.canon.example/', { scanned_at: new Date(T0 + 12 * 3_600_000).toISOString(), score: 60 });
+  assert.equal((await (await json(app, '/api/league', { report_id: idDoubleWww })).json()).host, 'canon.example');
+  assert.equal((await app.request(`${B}/api/league/canon.example`)).status, 200);
   const board = await (await app.request(`${B}/api/league`)).json();
   assert.deepEqual(board.rows.map((r) => r.host), ['canon.example']);
   assert.equal((await app.request(`${B}/league/www.canon.example`)).status, 200);
@@ -595,7 +681,7 @@ test('routes: www and apex are one standing, deep pages and redirects are refuse
   const older = await put('https://canon.example/', { scanned_at: new Date(T0 - 1000).toISOString(), score: 99 });
   const stale = await json(app, '/api/league', { report_id: older });
   assert.equal(stale.status, 409);
-  assert.equal((await (await app.request(`${B}/api/league/canon.example`)).json()).score, 55);
+  assert.equal((await (await app.request(`${B}/api/league/canon.example`)).json()).score, 60);
   const deep = await put('https://deep.example/blog/post');
   assert.equal((await json(app, '/api/league', { report_id: deep })).status, 422);
   const hop = await put('https://hop.example/', { final_url: 'https://other.example/' });

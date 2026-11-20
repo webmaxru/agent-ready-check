@@ -260,7 +260,7 @@ ${copyBlock('embed-md', 'Badge Markdown', embed)}
 <p class="small">The badge updates as your rank changes. It never starts a scan.</p></section>
 <p class="small">Community-submitted listing: anyone can add a public site, and the site's owner has not verified it. <a href="${esc(removalUrl)}">Ask for removal</a>.</p>`;
   return shell({
-    base, path: hostUrl(host), title: `${host} on the Agent-Ready League`, mdPath: `${hostUrl(host)}.md`, noindex: !active,
+    base, path: hostUrl(host), title: `${host} on the Agent-Ready League`, mdPath: `${hostUrl(host)}?format=markdown`, noindex: !active,
     description: `${host} is ${rankText} on the Agent-Ready League with ${e.score}/100 (${div.name} division, level ${e.level}), ${fmt(e.xp)} XP and ${unlocked.length} achievements.`,
     head: `<script type="module" src="/assets/league.js?v=${LEAGUE_ASSET_VERSION}"></script>\n`, body,
   });
@@ -277,10 +277,20 @@ export function leaguePanel({ report, ctx }) {
   const div = divisionOf(score);
   let head; let action; let note = '';
   if (!entry) {
-    head = `<p class="lp-lead">This score would put <b>${esc(reportHost(report))}</b> at <b>#${esc(ctx.projected.rank)}</b> of ${esc(ctx.projected.of)} in the ${divisionChip(div.id)} division.</p>`;
+    head = ctx.suppressed
+      ? `<p class="lp-lead"><b>${esc(reportHost(report))}</b> was removed from the League.</p>`
+      : ctx.joinProblem
+        ? `<p class="lp-lead">This report cannot join the League.</p>`
+        : `<p class="lp-lead">This score would put <b>${esc(reportHost(report))}</b> at <b>#${esc(ctx.projected.rank)}</b> of ${esc(ctx.projected.of)} in the ${divisionChip(div.id)} division.</p>`;
     const teaser = ctx.teaser.map((id) => `<li><span class="tile">${glyph(ACHIEVEMENT_BY_ID[id].glyph, 16)}</span>${esc(ACHIEVEMENT_BY_ID[id].name)} <span class="xpn">+${ACHIEVEMENT_BY_ID[id].xp}</span></li>`).join('');
-    action = `<form class="join" method="post" action="/league/join"><input type="hidden" name="report_id" value="${esc(report.id)}"><button type="submit">Join the League</button></form>`;
-    note = `<p class="small">Joining earns ${XP.join} XP${ctx.teaser.length ? ` and unlocks ${ctx.teaser.length} achievement${ctx.teaser.length === 1 ? '' : 's'} right away` : ''}. It lists the host name, score, level and score history publicly, as a community-submitted ranking that the site's owner has not verified. <a href="/league#removal">Removal</a> and <a href="/league#rules">how the game works</a>.</p>${teaser ? `<ul class="teaser">${teaser}</ul>` : ''}`;
+    action = ctx.suppressed
+      ? '<p class="small">This site cannot rejoin through a submission. <a href="/league#removal">Removal information</a>.</p>'
+      : ctx.joinProblem
+        ? `<p class="small">${esc(ctx.joinProblem)}</p>`
+        : `<form class="join" method="post" action="/league/join"><input type="hidden" name="report_id" value="${esc(report.id)}"><button type="submit">Join the League</button></form>`;
+    note = ctx.joinProblem || ctx.suppressed
+      ? `<p class="small">League standings are community-submitted and are not verified by the site's owner. <a href="/league#removal">Removal information</a>.</p>`
+      : `<p class="small">Joining earns ${XP.join} XP${ctx.teaser.length ? ` and unlocks ${ctx.teaser.length} achievement${ctx.teaser.length === 1 ? '' : 's'} right away` : ''}. It lists the host name, score, level and score history publicly, as a community-submitted ranking that the site's owner has not verified. <a href="/league#removal">Removal</a> and <a href="/league#rules">how the game works</a>.</p>${teaser ? `<ul class="teaser">${teaser}</ul>` : ''}`;
   } else if (entry.report_id === report.id) {
     head = `<p class="lp-lead">This is the report behind your standing: <b>#${esc(ctx.rank?.top ?? '-')}</b> of ${esc(ctx.total)}, ${divisionChip(divisionOf(entry.score).id)}, ${esc(entry.xp)} XP.</p>`;
     action = `<a class="btn" href="/league/${encodeURIComponent(entry.host)}">Open your profile</a>`;
@@ -288,8 +298,10 @@ export function leaguePanel({ report, ctx }) {
   } else if (ctx.newer) {
     const d = score - entry.score;
     head = `<p class="lp-lead">Your standing is ${esc(entry.score)}. This newer report scores <b>${esc(score)}</b>${d ? ` (${d > 0 ? '+' : ''}${esc(d)})` : ''}. Submit it to update the board.</p>`;
-    action = `<form class="join" method="post" action="/league/join"><input type="hidden" name="report_id" value="${esc(report.id)}"><button type="submit">Update my standing</button></form>`;
-    note = `<p class="small">${score > entry.best_score ? `Beats your best: +${XP.perPoint} XP for each point above ${esc(entry.best_score)}.` : 'No XP for points you already earned, but re-scanning keeps your streak alive.'}</p>`;
+    action = ctx.joinProblem
+      ? `<p class="small">${esc(ctx.joinProblem)}</p>`
+      : `<form class="join" method="post" action="/league/join"><input type="hidden" name="report_id" value="${esc(report.id)}"><button type="submit">Update my standing</button></form>`;
+    note = ctx.joinProblem ? '' : `<p class="small">${score > entry.best_score ? `Beats your best: +${XP.perPoint} XP for each point above ${esc(entry.best_score)}.` : 'No XP for points you already earned, but re-scanning keeps your streak alive.'}</p>`;
   } else {
     head = '<p class="lp-lead">A newer report for this site is already on the board.</p>';
     action = `<a class="btn" href="/league/${encodeURIComponent(entry.host)}">Open the profile</a>`;
@@ -333,9 +345,9 @@ export function renderLeagueMarkdown({ base, board = 'top', rows, stats, crowns 
     `Boards: ${BOARD_IDS.map((id) => (id === board ? `**${BOARDS[id].name}**` : `[${BOARDS[id].name}](${b}/league.md?board=${id})`)).join(' | ')}. ${BOARDS[board].blurb}`, ''];
   if (rows.length) {
     L.push('| Rank | Site | Division | Score | Gain 30d | Level | XP | Streak | Achievements |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
-    for (const r of rows.slice(0, 100)) L.push(`| ${r.rank} | [${mdc(r.host)}](${b}${hostUrl(r.host)}.md) | ${divisionOf(r.score).name} | ${r.score} | ${r.gain > 0 ? `+${r.gain}` : r.gain} | L${r.level} | ${r.xp} | ${r.streak}w | ${r.achievements}/${ACHIEVEMENTS.length} |`);
+    for (const r of rows.slice(0, 100)) L.push(`| ${r.rank} | [${mdc(r.host)}](${b}${hostUrl(r.host)}?format=markdown) | ${divisionOf(r.score).name} | ${r.score} | ${r.gain > 0 ? `+${r.gain}` : r.gain} | L${r.level} | ${r.xp} | ${r.streak}w | ${r.achievements}/${ACHIEVEMENTS.length} |`);
   } else L.push('Nobody is on this board yet.');
-  if (crowns.length) L.push('', '## Layer crowns', '', ...crowns.map((c) => `- ${layerName(c.layer)}: [${mdc(c.host)}](${b}${hostUrl(c.host)}.md), ${c.score}/100`));
+  if (crowns.length) L.push('', '## Layer crowns', '', ...crowns.map((c) => `- ${layerName(c.layer)}: [${mdc(c.host)}](${b}${hostUrl(c.host)}?format=markdown), ${c.score}/100`));
   L.push('', '## Join', '', `Scan a site at ${b}/, then submit the stored report with \`POST ${b}/api/league {"report_id":"..."}\` or the Join button on the report page. XP: ${XP.join} for joining, ${XP.perPoint} per point above your best, ${XP.perLevel} per level above your best, plus streak bonuses and achievements. Data: \`GET ${b}/api/league\`.`, '', '## Community rankings', '', `Rankings are community-submitted: anyone can add a public site from a scan this service ran, so a listing does not mean the site's owner took part, checked it or agrees with it. To have a site removed, open an issue at ${removalUrl} with the host name.`, '');
   return L.join('\n');
 }

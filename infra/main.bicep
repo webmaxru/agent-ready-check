@@ -63,6 +63,13 @@ param rateLimit int = 10
 @description('Rate-limit window in seconds.')
 param rateWindowSeconds int = 600
 
+@description('****** for League moderation routes. Empty disables moderation.')
+@secure()
+param leagueAdminToken string = ''
+
+@description('Optional URL where site owners can request removal from the League.')
+param leagueRemovalUrl string = ''
+
 @description('Object id of the GitHub Actions service principal (Entra app). When set, it gets Contributor on this resource group so the workflows can deploy. Needs Owner or User Access Administrator to assign.')
 param deployerPrincipalId string = ''
 
@@ -245,6 +252,8 @@ resource appSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
     RATE_LIMIT: string(rateLimit)
     RATE_WINDOW: string(rateWindowSeconds)
     SCAN_TIMEOUT_MS: '30000'
+    LEAGUE_ADMIN_TOKEN: leagueAdminToken
+    LEAGUE_REMOVAL_URL: leagueRemovalUrl
   }
 }
 

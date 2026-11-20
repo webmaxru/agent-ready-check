@@ -96,7 +96,7 @@ ul.plain li{margin-bottom:4px}
 .ranks li{display:flex;flex-direction:column;gap:2px;background:var(--ink-deep);border:var(--b) solid var(--plum);padding:8px}
 .ranks b{font-family:var(--font-pixel);font-size:20px;color:var(--paper)}
 .console .div{border-color:var(--paper)}
-.console .btn{color:var(--paper)}
+.console .btn{color:#fff}
 .console .actions{display:flex;flex-wrap:wrap;gap:var(--u)}
 .console .btn.quiet{background:var(--ink);color:var(--paper);border-color:var(--paper)}
 .console .btn.quiet:hover{background:var(--paper);color:var(--ink)}
@@ -146,10 +146,10 @@ svg.hist{display:block;background:var(--panel);border:var(--b) solid var(--ink);
 .cele .gainline{font-family:var(--font-pixel);color:var(--lavender);font-size:20px}
 .cele .gainline .big{font-size:56px;color:var(--mint);line-height:1}
 .events{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.ev{display:flex;align-items:center;gap:12px;background:var(--ink-deep);border:var(--b) solid var(--plum);padding:8px 12px}
-.ev .xpn{margin-left:auto;color:var(--mint)}
-.ev-achievement{border-color:var(--mint)}
-.ev .tile{border-color:var(--plum)}
+.events .ev{display:flex;align-items:center;gap:12px;background:var(--ink-deep);border:var(--b) solid var(--plum);padding:8px 12px}
+.events .ev .xpn{margin-left:auto;color:var(--mint)}
+.events .ev-achievement{border-color:var(--mint)}
+.events .ev .tile{border-color:var(--plum)}
 canvas.confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:20}
 
 @media (max-width:900px){

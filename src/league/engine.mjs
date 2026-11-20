@@ -16,6 +16,7 @@ export const DORMANT_MS = 60 * DAY; // no re-scan for this long: off the boards
 export const FRESH_MS = 14 * DAY;
 export const CLIMB_MS = 30 * DAY;
 export const HISTORY_MAX = 30;
+export const RANK_SUBMISSION_INTERVAL_MS = 6 * 3_600_000;
 export const BOARD_IDS = ['top', 'climbers', 'grinders', 'fresh'];
 export const BOARDS = {
   top: { id: 'top', name: 'Top', blurb: 'The highest Agent-Ready scores right now.', metric: 'Score' },
@@ -61,7 +62,7 @@ export const weekOf = (ms) => Math.floor((Math.floor(ms / DAY) + 3) / 7);
 
 export function normalizeHost(h) {
   // One standing per site: a leading "www." is the same site as the bare domain.
-  return String(h || '').trim().toLowerCase().replace(/\.$/, '').replace(/^www\./, '');
+  return String(h || '').trim().toLowerCase().replace(/\.$/, '').replace(/^(?:www\.)+/, '');
 }
 // A public DNS name: labels, then a top-level label that starts with a letter (so 1.2.3.44 is not a host). No ports.
 export const HOST_RE = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$/;
@@ -113,6 +114,7 @@ export function submissionProblem(report, now = Date.now()) {
   // The standing is for the site, so the report must be for its home page and must not have been redirected to another site.
   try {
     const asked = new URL(report.url);
+    if (asked.username || asked.password) return 'URLs containing credentials cannot join the League. Scan the public home page directly.';
     if (asked.pathname !== '/' || asked.search) return 'Only a scan of the home page can join the League. Scan https://' + host + '/ and submit that report.';
     if (normalizeHost(asked.host) !== host) return 'That address redirects to a different site. Scan ' + host + ' directly and submit that report.';
   } catch { return 'This report has no valid URL.'; }
@@ -151,6 +153,9 @@ export function applySubmission(prev, snap, now = Date.now()) {
   if (prev && prev.report_id === snap.report_id) return { entry: prev, changed: false, events: [], duplicate: true };
   if (prev && Date.parse(snap.at) <= Date.parse(prev.updated_at_report)) {
     return { entry: prev, changed: false, events: [], error: 'stale', message: 'A newer report for this site is already on the board.' };
+  }
+  if (prev && Date.parse(snap.at) - Date.parse(prev.updated_at_report) < RANK_SUBMISSION_INTERVAL_MS) {
+    return { entry: prev, changed: false, events: [], error: 'frequency', message: 'A site can submit a new League standing once every six hours.' };
   }
   const events = [];
   const nowIso = new Date(now).toISOString();

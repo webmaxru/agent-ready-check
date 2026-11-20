@@ -98,6 +98,7 @@ export function createApp(o) {
   const clientKey = (c) => {
     const remote = c.env?.remoteAddress || c.env?.incoming?.socket?.remoteAddress;
     if (runtime === 'node') return (trustProxy && (c.req.header('x-forwarded-for') || '').split(',')[0].trim()) || remote || 'anonymous';
+    if (runtime === 'azure') return (c.req.header('x-forwarded-for') || '').split(',')[0].trim() || remote || 'anonymous';
     return c.req.header('cf-connecting-ip') || (c.req.header('x-forwarded-for') || '').split(',')[0].trim() || remote || 'anonymous';
   };
   const readLimitedBody = async (c) => {
@@ -291,6 +292,7 @@ export function createApp(o) {
   // ---- Agent-Ready League (docs/LEAGUE.md): boards, profiles, joining, badges
   const league = o.league || store?.league || memoryLeague();
   const clock = o.now || (() => Date.now());
+  let leagueSnapshot = null; let leagueSnapshotAt = 0; let leagueGeneration = 0;
   const joins = new Map(); // client -> recent join timestamps (per instance; joins are cheap, this only stops floods)
   const joinAllowed = (c) => {
     const k = clientKey(c); const t = clock(); const recent = (joins.get(k) || []).filter((x) => t - x < 3_600_000);
@@ -299,7 +301,15 @@ export function createApp(o) {
     if (joins.size > 5000) joins.delete(joins.keys().next().value);
     return true;
   };
-  const leagueEntries = async () => league.list();
+  const invalidateLeagueSnapshot = () => { leagueGeneration++; leagueSnapshot = null; };
+  const leagueEntries = async () => {
+    const now = clock();
+    if (leagueSnapshot && now - leagueSnapshotAt < 5_000) return leagueSnapshot;
+    const generation = leagueGeneration;
+    const entries = await league.list();
+    if (generation === leagueGeneration) { leagueSnapshot = entries; leagueSnapshotAt = clock(); }
+    return entries;
+  };
   const leagueStats = (entries) => {
     const act = entries.filter((e) => isActive(e, clock()));
     return { players: act.length, average: act.length ? Math.round(act.reduce((s, e) => s + e.score, 0) / act.length) : 0, top: act.reduce((m, e) => Math.max(m, e.score), 0), achievements: act.reduce((s, e) => s + Object.keys(e.achievements || {}).length, 0) };
@@ -323,18 +333,19 @@ export function createApp(o) {
   async function panelFor(report) {
     try {
       if (!report?.id) return '';
-      const why = submissionProblem(report, clock());
-      if (why) return `<section class="band league-panel" id="league" aria-labelledby="lp-h"><h2 id="lp-h" class="sh">Agent-Ready League</h2><p>This report cannot join the <a href="/league">League</a>: ${esc(why)}</p></section>`;
+      const joinProblem = submissionProblem(report, clock());
       const entries = await leagueEntries();
       const host = reportHost(report); const entry = entries.find((e) => e.host === host) || null;
+      const suppressed = await league.isSuppressed?.(host) || false;
       const st = entry ? standing(entries, host, clock()) : null;
       const at = Date.parse(report.scanned_at);
       const ctx = {
         entry, rank: st?.ranks || null, total: st?.total ?? 0,
         projected: projectedRank(entries, host, Math.round(report.score), report.compat?.isitagentready?.level ?? 0, clock()),
         quests: quests(report),
-        teaser: applySubmission(null, snapshotOf(report), clock()).events.filter((e) => e.type === 'achievement' && e.id !== 'player-one').map((e) => e.id),
+        teaser: !joinProblem && !suppressed ? applySubmission(null, snapshotOf(report), clock()).events.filter((e) => e.type === 'achievement' && e.id !== 'player-one').map((e) => e.id) : [],
         newer: !!entry && at > Date.parse(entry.updated_at_report), older: !!entry && at < Date.parse(entry.updated_at_report),
+        joinProblem, suppressed,
       };
       return leaguePanel({ report, ctx });
     } catch { return ''; }
@@ -346,8 +357,10 @@ export function createApp(o) {
     const snap = snapshotOf(report);
     const out = await league.submit(snap.host, (prev) => applySubmission(prev, snap, clock()));
     if (out.error === 'stale') throw new HttpError(409, out.message);
+    if (out.error === 'frequency') throw new HttpError(409, out.message);
     if (out.error === 'suppressed') throw new HttpError(403, out.message);
     if (out.error === 'capacity') throw new HttpError(503, out.message);
+    if (out.changed) invalidateLeagueSnapshot();
     return { ...out, host: snap.host, created: out.events.some((e) => e.type === 'joined') };
   }
   const joinJson = async (c, out, status) => {
@@ -403,11 +416,15 @@ export function createApp(o) {
   // Removal leaves a tombstone: submissions cannot add the host again until an admin restores it.
   app.delete('/api/league/:host', async (c) => {
     const denied = adminOnly(c); if (denied) return denied;
-    return (await league.remove(c.req.param('host'))) ? c.body(null, 204) : problem(c, 404, 'That host is not on the board, or is already removed.');
+    if (!(await league.remove(c.req.param('host')))) return problem(c, 404, 'That host is not on the board, or is already removed.');
+    invalidateLeagueSnapshot();
+    return c.body(null, 204);
   });
   app.post('/api/league/:host/restore', async (c) => {
     const denied = adminOnly(c); if (denied) return denied;
-    return (await league.restore(c.req.param('host'))) ? c.body(null, 204) : problem(c, 404, 'That host is not removed.');
+    if (!(await league.restore(c.req.param('host')))) return problem(c, 404, 'That host is not removed.');
+    invalidateLeagueSnapshot();
+    return c.body(null, 204);
   });
   app.all('/api/*', (c) => problem(c, 404, `No API operation at ${new URL(c.req.url).pathname}. See /openapi.json.`, { headers: rlHeaders(c) }));
 
@@ -554,12 +571,15 @@ export function createApp(o) {
     const aliasHost = suffix ? normalizeHost(raw.slice(0, -3)) : rawHost;
     const alias = suffix ? entries.find((e) => e.host === aliasHost) : null;
     let host; let md;
-    if (suffix && literal && alias) {
+    if (c.req.query('format') === 'markdown') {
+      host = rawHost; md = true;
+    } else if (suffix && literal && alias) {
       c.header('Vary', 'Accept');
       md = wantsMarkdown(c.req.header('accept'));
       host = md ? aliasHost : rawHost;
     } else if (literal) {
       host = rawHost;
+      if (suffix) c.header('Vary', 'Accept');
       md = suffix ? wantsMarkdown(c.req.header('accept')) : false;
     } else {
       host = suffix ? aliasHost : rawHost;
@@ -572,7 +592,7 @@ export function createApp(o) {
     const fresh = clock() - Date.parse(st.entry.updated_at) < 600_000;
     const banner = fresh ? (c.req.query('joined') ? 'joined' : c.req.query('updated') ? 'updated' : null) : null;
     const report = await store.get(st.entry.report_id).catch(() => null);
-    return htmlOrMd(c, { html: () => renderProfileHtml({ removalUrl: leagueRemovalUrl, base, st, quests: report ? quests(report) : null, report, banner, now: clock() }), md: () => renderProfileMarkdown({ base, st, removalUrl: leagueRemovalUrl, now: clock() }), headers: { 'cache-control': banner ? 'no-store' : 'public, max-age=60', link: `</league/${encodeURIComponent(host)}.md>; rel="alternate"; type="text/markdown", </api/league/${encodeURIComponent(host)}>; rel="alternate"; type="application/json"` } });
+    return htmlOrMd(c, { html: () => renderProfileHtml({ removalUrl: leagueRemovalUrl, base, st, quests: report ? quests(report) : null, report, banner, now: clock() }), md: () => renderProfileMarkdown({ base, st, removalUrl: leagueRemovalUrl, now: clock() }), headers: { 'cache-control': banner ? 'no-store' : 'public, max-age=60', link: `</league/${encodeURIComponent(host)}?format=markdown>; rel="alternate"; type="text/markdown", </api/league/${encodeURIComponent(host)}>; rel="alternate"; type="application/json"` } });
   });
 
   app.get('/scan', async (c) => {

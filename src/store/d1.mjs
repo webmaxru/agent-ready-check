@@ -52,10 +52,11 @@ export function d1League(db, { now = () => Date.now() } = {}) {
         const out = await fn(cur);
         if (!out.changed) return out;
         const body = JSON.stringify(out.entry);
+        const updated = Date.parse(out.entry.updated_at);
         try {
           const write = row
-            ? db.prepare('UPDATE league SET body = ?, version = version + 1, updated = ? WHERE host = ? AND version = ? AND body = ?').bind(body, now(), h, row.version, row.body)
-            : db.prepare('INSERT INTO league (host, version, updated, body) VALUES (?, 1, ?, ?)').bind(h, now(), body);
+            ? db.prepare('UPDATE league SET body = ?, version = version + 1, updated = ? WHERE host = ? AND version = ? AND body = ?').bind(body, updated, h, row.version, row.body)
+            : db.prepare('INSERT INTO league (host, version, updated, body) VALUES (?, 1, ?, ?)').bind(h, updated, body);
           const results = await db.batch([write, evict()]);
           if ((results?.[0]?.meta?.changes ?? 1) > 0) {
             const retained = parse(await db.prepare('SELECT body FROM league WHERE host = ?').bind(h).first());
