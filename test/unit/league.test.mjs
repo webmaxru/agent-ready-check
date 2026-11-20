@@ -1,17 +1,18 @@
 // The Agent-Ready League: rules (engine), stores and routes. No network.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applySubmission, snapshotOf, submissionProblem, rankBoard, standing, crownsOf, projectedRank, quests, divisionOf, playerLevel, DAY, WEEK, XP } from '../../src/league/engine.mjs';
-import { memoryLeague, prune } from '../../src/league/store.mjs';
-import { fsLeague } from '../../src/store/fs.mjs';
+import { applySubmission, snapshotOf, submissionProblem, rankBoard, standing, crownsOf, projectedRank, quests, divisionOf, playerLevel, gainOf, DAY, WEEK, XP } from '../../src/league/engine.mjs';
+import { memoryLeague, prune, docLeague, MAX_ENTRIES, FORGET_MS } from '../../src/league/store.mjs';
+import { fsLeague, fsStore } from '../../src/store/fs.mjs';
 import { azureBlobStore } from '../../src/store/azure-blob.mjs';
 import { d1Store } from '../../src/store/d1.mjs';
 import { createApp } from '../../server/app.mjs';
 import { memoryStore } from '../../src/store/memory.mjs';
 import { memoryRateLimiter } from '../../server/ratelimit.mjs';
 import { renderLeagueHtml, renderProfileHtml } from '../../src/league/render.mjs';
+import { LEAGUE_CSS } from '../../src/league/assets.mjs';
 import { fakeReport } from './server-fake-report.mjs';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -88,6 +89,39 @@ test('one standing per site: www folds into the apex, only home pages, no redire
   assert.match(submissionProblem({ ...report('a.example', 50), final_url: 'https://b.example/' }, T0), /different site/);
   assert.match(submissionProblem(report('1.2.3.44', 50), T0), /public domain/);
   assert.match(submissionProblem(report('a.example:8080', 50), T0), /public domain/);
+  assert.match(submissionProblem(report('a.example:80', 50), T0), /public domain/);
+  assert.match(submissionProblem({ ...report('a.example', 50), url: 'https://a.example/?p=123' }, T0), /home page/);
+});
+
+test('WebMCP achievement requires a successful browser scan', () => {
+  const rep = report('webmcp.example', 50, T0, { checks: [{ id: 'webmcp.tools', status: 'pass' }] });
+  let e = submit(null, rep).entry;
+  assert.equal(e.achievements['webmcp-wizard'], undefined);
+  const browserReport = report('webmcp.example', 50, T0 + DAY, { checks: [{ id: 'webmcp.tools', status: 'pass' }], mode: { browser: true } });
+  e = submit(e, browserReport, T0 + DAY).entry;
+  assert.ok(e.achievements['webmcp-wizard']);
+});
+
+test('lifetime climb baseline and rolling ranking history survive chart compaction', () => {
+  let e = submit(null, report('climber.example', 40, T0)).entry;
+  for (let day = 1; day <= 31; day++) e = submit(e, report('climber.example', 49, T0 + day * DAY), T0 + day * DAY).entry;
+  assert.equal(e.history.length, 30);
+  assert.equal(e.first_score, 40);
+  const priorRankHistory = structuredClone(e.rank_history);
+  const next = submit(e, report('climber.example', 65, T0 + 32 * DAY), T0 + 32 * DAY).entry;
+  assert.deepEqual(e.rank_history, priorRankHistory);
+  assert.ok(next.achievements.climber);
+  assert.ok(next.achievements.rocket);
+  assert.equal(gainOf(next, T0 + 32 * DAY), 16);
+  const aged = submit(next, report('climber.example', 65, T0 + 63 * DAY), T0 + 63 * DAY).entry;
+  assert.equal(gainOf(aged, T0 + 63 * DAY), 0);
+});
+
+test('League activity and last-scan display use the report scan time', () => {
+  const e = submit(null, report('scan-time.example', 50, T0), T0).entry;
+  const later = submit(e, report('scan-time.example', 51, T0 + DAY), T0 + 8 * DAY).entry;
+  assert.equal(later.updated_at, new Date(T0 + DAY).toISOString());
+  assert.equal(standing([later], 'scan-time.example', T0 + 62 * DAY).active, false);
 });
 
 test('boards: ties share a rank, climbers need a gain, fresh limits to new players, dormant players drop out', () => {
@@ -147,6 +181,45 @@ test('stores: memory and fs keep the same contract; prune forgets dormant standi
   assert.deepEqual(Object.keys(prune({ 'y.example': e }, T0 + 100 * DAY)), ['y.example']);
 });
 
+test('expired standings are pruned before submission and low-XP capacity eviction is refused', async () => {
+  const clock = { t: T0 };
+  const lg = memoryLeague({ now: () => clock.t });
+  await lg.submit('forgotten.example', (p) => applySubmission(p, snapshotOf(report('forgotten.example', 70, T0)), T0));
+  clock.t = T0 + 181 * DAY;
+  const fresh = snapshotOf(report('forgotten.example', 50, clock.t));
+  const revived = await lg.submit('forgotten.example', (p) => applySubmission(p, fresh, clock.t));
+  assert.equal(revived.entry.history.length, 1);
+  assert.equal(revived.entry.xp, XP.join + 50);
+
+  const entries = Object.fromEntries(Array.from({ length: MAX_ENTRIES }, (_, i) => {
+    const host = `site${i}.example`;
+    return [host, { host, xp: i + 1, updated_at: new Date(T0).toISOString() }];
+  }));
+  let doc = { entries, suppressed: {} };
+  const full = docLeague({ load: async () => ({ doc: structuredClone(doc), tag: 0 }), save: async (next) => { doc = next; return true; }, now: () => T0 + 1000 });
+  const refused = await full.submit('new.example', async () => ({ entry: { host: 'new.example', xp: 0, updated_at: new Date(T0 + 1000).toISOString() }, changed: true }));
+  assert.equal(refused.error, 'capacity');
+  assert.equal(Object.keys(doc.entries).length, MAX_ENTRIES);
+});
+
+test('filesystem League file is outside report IDs and read failures never initialize over existing data', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'league-fs-'));
+  try {
+    const league = fsLeague({ dir, now: () => T0 });
+    const snap = snapshotOf(report('fs.example', 50));
+    await league.submit('fs.example', (p) => applySubmission(p, snap, T0));
+    assert.ok(readdirSync(dir).includes('.league.json'));
+    const reports = fsStore({ dir });
+    assert.equal(await reports.reindex(), 0);
+    const app = createApp({ scan: async () => ({}), store: reports, rateLimit: memoryRateLimiter(), resolve: async () => [] });
+    assert.equal((await app.request(`${B}/api/reports/league`)).status, 404);
+
+    writeFileSync(join(dir, '.league.json'), '{broken');
+    await assert.rejects(league.submit('fs.example', () => ({ changed: true, entry: {} })), SyntaxError);
+    assert.equal(await (await import('node:fs/promises')).readFile(join(dir, '.league.json'), 'utf8'), '{broken');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('rendering escapes host names and stays accessible', () => {
   const evil = submit(null, report('a.example', 70)).entry;
   evil.host = '<img src=x onerror=alert(1)>.example';
@@ -157,6 +230,11 @@ test('rendering escapes host names and stays accessible', () => {
   assert.match(html, /<caption/);
   const prof = renderProfileHtml({ base: 'https://c.example', st: standing([evil], evil.host, T0), now: T0 });
   assert.ok(!prof.includes('<img src=x'));
+});
+
+test('League action and teaser XP colors override their dark-console defaults', () => {
+  assert.match(LEAGUE_CSS, /\.console \.btn\{color:var\(--paper\)\}/);
+  assert.match(LEAGUE_CSS, /\.teaser \.xpn\{color:var\(--mint\)\}/);
 });
 
 // ---- routes
@@ -173,17 +251,21 @@ const B = 'https://checker.example';
 const json = (app, path, body, method = 'POST', headers = {}) => app.request(B + path, { method, headers: { 'content-type': 'application/json', ...headers }, body: body ? JSON.stringify(body) : undefined });
 
 test('routes: scan, join through the form, profile, boards, badge, markdown', async () => {
-  const { app } = makeApp({ leagueAdminToken: 'secret' });
+  const { app } = makeApp({ leagueAdminToken: 'secret', baseUrl: 'https://canonical.example' });
   const scan = await (await json(app, '/api/scan', { url: 'https://example.com' })).json();
   const page = await (await app.request(`${B}/r/${scan.id}`, { headers: { accept: 'text/html' } })).text();
   assert.match(page, /Join the League/);
-  const form = await app.request(`${B}/league/join`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', origin: B }, body: `report_id=${scan.id}` });
+  const form = await app.request(`${B}/league/join`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://canonical.example' }, body: `report_id=${scan.id}` });
   assert.equal(form.status, 303);
   assert.equal(form.headers.get('location'), '/league/example.com?joined=1');
   const profile = await app.request(`${B}/league/example.com?joined=1`);
   assert.equal(profile.status, 200);
   assert.equal(profile.headers.get('cache-control'), 'no-store');
   assert.match(await profile.text(), /example\.com/);
+  const profileMarkdown = await app.request(`${B}/league/example.com.md`);
+  const profileMarkdownBody = await profileMarkdown.text();
+  assert.match(profileMarkdownBody, /community-submitted/i);
+  assert.match(profileMarkdownBody, /https:\/\/github\.com\/webmaxru\/agent-ready-check\/issues\/new/);
   const board = await (await app.request(`${B}/api/league`)).json();
   assert.equal(board.rows[0].host, 'example.com');
   assert.equal(board.players, 1);
@@ -196,6 +278,10 @@ test('routes: scan, join through the form, profile, boards, badge, markdown', as
   assert.equal((await app.request(`${B}/api/league/nobody.example`)).status, 404);
   const again = await json(app, '/api/league', { report_id: scan.id });
   assert.equal((await again.json()).status, 'unchanged');
+  const reportHtml = await app.request(`${B}/r/${scan.id}`);
+  assert.equal(reportHtml.headers.get('cache-control'), 'no-cache');
+  const reportMd = await app.request(`${B}/r/${scan.id}.md`);
+  assert.equal(reportMd.headers.get('cache-control'), 'public, max-age=3600');
   // report page now shows the standing
   assert.match(await (await app.request(`${B}/r/${scan.id}`, { headers: { accept: 'text/html' } })).text(), /Open your profile/);
 });
@@ -269,14 +355,74 @@ test('routes: reports older than 7 days are refused with 422', async () => {
 });
 
 test('MCP get_league reads boards and standings', async () => {
-  const { app } = makeApp();
+  const { app } = makeApp({ baseUrl: 'https://canonical.example' });
   await json(app, '/api/league', { url: 'https://example.com' });
   const call = async (args) => (await (await json(app, '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_league', arguments: args } }, 'POST', { accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' })).json()).result;
   const board = await call({});
   assert.match(board.content[0].text, /example\.com/);
   const one = await call({ host: 'example.com' });
   assert.equal(one.structuredContent.host, 'example.com');
+  assert.match(one.content[0].text, /https:\/\/canonical\.example\/league\/example\.com/);
   assert.equal((await call({ host: 'nobody.example' })).isError, true);
+});
+
+test('literal .md hostnames resolve before Markdown aliases, with Accept negotiation on collisions', async () => {
+  const { app } = makeApp();
+  await json(app, '/api/league', { url: 'https://example.com/' });
+  await json(app, '/api/league', { url: 'https://example.com.md/' });
+  const literal = await app.request(`${B}/league/example.com.md`);
+  assert.match(await literal.text(), /example\.com\.md/);
+  assert.match(literal.headers.get('vary'), /Accept/);
+  const alias = await app.request(`${B}/league/example.com.md`, { headers: { accept: 'text/markdown' } });
+  assert.match(alias.headers.get('content-type'), /text\/markdown/);
+  assert.match(await alias.text(), /# example\.com on the Agent-Ready League/);
+});
+
+test('League join bodies are byte-limited while streaming and storage failures are not empty boards', async () => {
+  const { app } = makeApp({ maxBodyBytes: 32, league: { list: async () => { throw new Error('storage unavailable'); } } });
+  app.onError((_e, c) => c.text('storage unavailable', 500));
+  const oversized = () => {
+    let pulls = 0;
+    const body = new ReadableStream({ pull(controller) { pulls++; controller.enqueue(new Uint8Array(64)); } });
+    return { body, pulls: () => pulls };
+  };
+  const apiBody = oversized();
+  const apiResponse = await app.fetch(new Request(`${B}/api/league`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: apiBody.body, duplex: 'half' }));
+  assert.equal(apiResponse.status, 413);
+  assert.equal(apiBody.pulls(), 1);
+  const formBody = oversized();
+  const formResponse = await app.fetch(new Request(`${B}/league/join`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', origin: B }, body: formBody.body, duplex: 'half' }));
+  assert.equal(formResponse.status, 413);
+  assert.equal(formBody.pulls(), 1);
+  assert.equal((await app.request(`${B}/api/league`)).status, 500);
+});
+
+test('Node join rate limit ignores untrusted client IP headers unless proxy trust is enabled', async () => {
+  const { app } = makeApp({ runtime: 'node' });
+  let last;
+  for (let i = 0; i < 31; i++) {
+    last = await app.fetch(new Request(`${B}/api/league`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': `198.51.100.${i + 1}` }, body: '{}',
+    }), { remoteAddress: '192.0.2.10' });
+  }
+  assert.equal(last.status, 429);
+
+  const { app: trusted } = makeApp({ runtime: 'node', trustProxy: true });
+  for (let i = 0; i < 31; i++) {
+    last = await trusted.fetch(new Request(`${B}/api/league`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': `198.51.100.${i + 1}` }, body: '{}',
+    }), { remoteAddress: '192.0.2.10' });
+  }
+  assert.equal(last.status, 400);
+});
+
+test('API refuses a standing that could not be retained at capacity', async () => {
+  const { app } = makeApp({
+    league: { submit: async () => ({ entry: null, changed: false, error: 'capacity', message: 'The League is full and cannot retain this standing.' }) },
+  });
+  const response = await json(app, '/api/league', { url: 'https://full.example' });
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).detail, /League is full/);
 });
 
 test('azure league: board.json lives in its own container and is written with ETag preconditions', async () => {
@@ -312,20 +458,65 @@ test('azure league: board.json lives in its own container and is written with ET
 });
 
 test('d1 league: one row per host, compare-and-swap on version', async () => {
-  const rows = new Map(); let schemaRuns = 0;
+  const rows = new Map(); let schemaRuns = 0; let submitRace = null; let restoreRace = false;
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     async run() {
       if (sql.startsWith('CREATE')) { schemaRuns++; return { success: true }; }
-      if (sql.startsWith('INSERT INTO league')) { if (rows.has(args[0])) throw new Error('UNIQUE constraint failed'); rows.set(args[0], { version: 1, updated: args[1], body: args[2] }); return { meta: { changes: 1 } }; }
-      if (sql.startsWith('UPDATE league')) { const r = rows.get(args[2]); if (!r || (args.length > 3 && r.version !== args[3])) return { meta: { changes: 0 } }; Object.assign(r, { body: args[0], updated: args[1], version: r.version + 1 }); return { meta: { changes: 1 } }; }
-      if (sql.startsWith('DELETE FROM league')) return { meta: { changes: rows.delete(args[0]) ? 1 : 0 } };
+      if (sql.startsWith('INSERT INTO league')) {
+        const current = rows.get(args[0]);
+        if (sql.includes('ON CONFLICT(host)')) {
+          rows.set(args[0], { version: current ? current.version + 1 : 1, updated: args[1], body: args[2] });
+          return { meta: { changes: 1 } };
+        }
+        if (current) throw new Error('UNIQUE constraint failed');
+        rows.set(args[0], { version: 1, updated: args[1], body: args[2] });
+        return { meta: { changes: 1 } };
+      }
+      if (sql.startsWith('UPDATE league')) {
+        const r = rows.get(args[2]);
+        if (!r || r.version !== args[3] || r.body !== args[4]) return { meta: { changes: 0 } };
+        Object.assign(r, { body: args[0], updated: args[1], version: r.version + 1 });
+        return { meta: { changes: 1 } };
+      }
+      if (sql.startsWith('DELETE FROM league')) {
+        if (sql.includes('updated <')) {
+          let changes = 0;
+          for (const [h, r] of rows) if (r.updated < args[0] && !JSON.parse(r.body).tombstone) { rows.delete(h); changes++; }
+          return { meta: { changes } };
+        }
+        if (sql.includes('host IN (')) {
+          const live = [...rows].filter(([, r]) => !JSON.parse(r.body).tombstone).sort((a, b) => JSON.parse(a[1].body).xp - JSON.parse(b[1].body).xp);
+          const excess = Math.max(0, live.length - MAX_ENTRIES);
+          for (const [h] of live.slice(0, excess)) rows.delete(h);
+          return { meta: { changes: excess } };
+        }
+        const r = rows.get(args[0]);
+        if (!r || (args.length > 1 && (r.version !== args[1] || r.body !== args[2]))) return { meta: { changes: 0 } };
+        rows.delete(args[0]);
+        return { meta: { changes: 1 } };
+      }
       return { success: true, meta: { changes: 0 } };
     },
-    async first() { const r = rows.get(args[0]); return r ? { body: r.body, version: r.version } : null; },
-    async all() { return { results: [...rows.values()].filter((r) => r.updated >= args[0]).map((r) => ({ body: r.body })) }; },
+    async first() {
+      const r = rows.get(args[0]);
+      if (!r) return null;
+      const result = { body: r.body, version: r.version };
+      if (sql === 'SELECT body, version FROM league WHERE host = ?' && submitRace?.host === args[0]) {
+        rows.set(args[0], { version: r.version + 1, updated: T0 + 2 * DAY, body: JSON.stringify(submitRace.entry) });
+        submitRace = null;
+      } else if (sql === 'SELECT body, version FROM league WHERE host = ?' && restoreRace && JSON.parse(r.body).tombstone) {
+        restoreRace = false;
+        rows.set(args[0], { version: 1, updated: T0, body: JSON.stringify({ host: args[0], score: 80 }) });
+      }
+      return result;
+    },
+    async all() {
+      return { results: [...rows.values()].filter((r) => r.updated >= args[0] && !JSON.parse(r.body).tombstone)
+        .sort((a, b) => b.updated - a.updated).slice(0, 5000).map((r) => ({ body: r.body })) };
+    },
   });
-  const db = { prepare: (sql) => stmt(sql), batch: async (l) => Promise.all(l.map((x) => x.run())) };
+  const db = { prepare: (sql) => stmt(sql), batch: async (l) => { const out = []; for (const x of l) out.push(await x.run()); return out; } };
   const lg = d1Store(db, { now: () => T0 }).league;
   const snap = snapshotOf(report('d.example', 70));
   assert.equal((await lg.submit('d.example', (p) => applySubmission(p, snap, T0))).changed, true);
@@ -342,6 +533,32 @@ test('d1 league: one row per host, compare-and-swap on version', async () => {
   assert.equal(await lg.restore('d.example'), true);
   assert.equal(await lg.restore('d.example'), false);
   assert.equal((await lg.submit('d.example', (p) => applySubmission(p, snap2, T0 + DAY))).changed, true);
+
+  const newer = snapshotOf(report('d.example', 85, T0 + 2 * DAY));
+  const newerEntry = applySubmission(await lg.get('d.example'), newer, T0 + 2 * DAY).entry;
+  submitRace = { host: 'd.example', entry: newerEntry };
+  const older = snapshotOf(report('d.example', 80, T0 + DAY + 1000));
+  assert.equal((await lg.submit('d.example', (p) => applySubmission(p, older, T0 + 2 * DAY))).error, 'stale');
+  assert.equal((await lg.get('d.example')).score, 85);
+
+  assert.equal(await lg.remove('restore-race.example'), true);
+  restoreRace = true;
+  assert.equal(await lg.restore('restore-race.example'), false);
+  assert.equal((await lg.get('restore-race.example')).score, 80);
+
+  rows.clear();
+  rows.set('kept-tombstone.example', { version: 2, updated: T0 + 100 * 365 * DAY, body: JSON.stringify({ tombstone: true }) });
+  rows.set('expired.example', { version: 1, updated: T0 - FORGET_MS - 1, body: JSON.stringify({ host: 'expired.example', xp: 0 }) });
+  for (let i = 0; i < MAX_ENTRIES; i++) {
+    const host = `retained${i}.example`;
+    rows.set(host, { version: 1, updated: T0, body: JSON.stringify({ host, xp: i + 1 }) });
+  }
+  assert.equal((await lg.list()).length, MAX_ENTRIES);
+  const capacity = await lg.submit('too-low.example', async () => ({ entry: { host: 'too-low.example', xp: 0, updated_at: new Date(T0).toISOString() }, changed: true }));
+  assert.equal(capacity.error, 'capacity');
+  assert.equal(rows.has('expired.example'), false);
+  assert.equal(JSON.parse(rows.get('kept-tombstone.example').body).tombstone, true);
+  assert.equal((await lg.list()).length, MAX_ENTRIES);
   assert.ok(schemaRuns >= 1);
 });
 

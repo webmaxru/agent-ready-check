@@ -7,12 +7,17 @@ import { docLeague } from '../league/store.mjs';
 
 /** League standings in one JSON file next to the reports. Writes are serialised in this process and atomic on disk. */
 export function fsLeague({ dir, now = () => Date.now() }) {
-  const file = join(dir, 'league.json');
+  const file = join(dir, '.league.json');
   let queue = Promise.resolve();
   const api = docLeague({
     now,
     load: async () => {
-      try { return { doc: JSON.parse(await readFile(file, 'utf8')), tag: null }; } catch { return { doc: null, tag: null }; }
+      let raw;
+      try { raw = await readFile(file, 'utf8'); } catch (e) {
+        if (e.code === 'ENOENT') return { doc: null, tag: null };
+        throw e;
+      }
+      return { doc: JSON.parse(raw), tag: null };
     },
     save: async (doc) => {
       await mkdir(dir, { recursive: true });

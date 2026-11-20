@@ -101,7 +101,7 @@ export async function createNodeApp(env = process.env) {
     scan: (url, { browser }) => scanNode(url, { browser, allowPrivate, browserOptions, runtime: 'node' }),
     store, rateLimit, browserAvailable, allowPrivate, resolve: dnsResolve,
     baseUrl: env.BASE_URL || undefined, assets: publicAssets(env.PUBLIC_DIR || PUBLIC), runtime: 'node',
-    leagueAdminToken: env.LEAGUE_ADMIN_TOKEN || '', leagueRemovalUrl: env.LEAGUE_REMOVAL_URL || undefined,
+    leagueAdminToken: env.LEAGUE_ADMIN_TOKEN || '', leagueRemovalUrl: env.LEAGUE_REMOVAL_URL || undefined, trustProxy: env.TRUST_PROXY === '1',
   });
   return { app, store, browserAvailable };
 }

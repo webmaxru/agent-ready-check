@@ -51,6 +51,17 @@ test('browser checks are offered only when a runner URL and token are both set',
   assert.equal((await (await half(new Request(`${BASE}/api/health`))).json()).browser, false);
 });
 
+test('Azure handler forwards join streams to the app without buffering oversized bodies', async () => {
+  const handle = createAzureHandler({ BASE_URL: BASE }, { store: memoryStore() });
+  let pulls = 0;
+  const body = new ReadableStream({ pull(controller) { pulls++; controller.enqueue(new Uint8Array(20_000)); } });
+  const response = await handle(new Request(`${BASE}/api/league`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body, duplex: 'half',
+  }));
+  assert.equal(response.status, 413);
+  assert.equal(pulls, 1);
+});
+
 test('parseConnectionString reads Azure and Azurite connection strings', () => {
   const a = parseConnectionString('DefaultEndpointsProtocol=https;AccountName=arc1;AccountKey=a2V5;EndpointSuffix=core.windows.net');
   assert.deepEqual(a, { account: 'arc1', key: 'a2V5', blobEndpoint: 'https://arc1.blob.core.windows.net' });

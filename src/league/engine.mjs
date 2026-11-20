@@ -61,7 +61,7 @@ export const weekOf = (ms) => Math.floor((Math.floor(ms / DAY) + 3) / 7);
 
 export function normalizeHost(h) {
   // One standing per site: a leading "www." is the same site as the bare domain.
-  return String(h || '').trim().toLowerCase().replace(/\.$/, '').replace(/:443$/, '').replace(/:80$/, '').replace(/^www\./, '');
+  return String(h || '').trim().toLowerCase().replace(/\.$/, '').replace(/^www\./, '');
 }
 // A public DNS name: labels, then a top-level label that starts with a letter (so 1.2.3.44 is not a host). No ports.
 export const HOST_RE = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$/;
@@ -87,7 +87,7 @@ export const ACHIEVEMENTS = [
   { id: 'markdown-native', name: 'Markdown Native', xp: 50, how: 'Pass Markdown negotiation, Vary and llms.txt.', glyph: 'doc', test: allPass(['content.markdown-negotiation', 'content.markdown-vary', 'content.llms-txt']) },
   { id: 'signposted', name: 'Well Signposted', xp: 50, how: 'Pass two of: API catalog, ARD manifest, Agent Skills.', glyph: 'sign', test: somePass(['api.catalog', 'discovery.ard', 'discovery.agent-skills'], 2) },
   { id: 'mcp-pioneer', name: 'MCP Pioneer', xp: 75, how: 'Serve an MCP server card and a working MCP endpoint.', glyph: 'plug', test: allPass(['mcp.server-card', 'mcp.endpoint']) },
-  { id: 'webmcp-wizard', name: 'WebMCP Wizard', xp: 75, how: 'Register WebMCP tools (needs a browser scan).', glyph: 'wand', test: allPass(['webmcp.tools']) },
+  { id: 'webmcp-wizard', name: 'WebMCP Wizard', xp: 75, how: 'Register WebMCP tools (needs a browser scan).', glyph: 'wand', test: ({ snap, passed }) => snap.browser && passed.has('webmcp.tools') },
   { id: 'locked-down', name: 'Locked Down', xp: 50, how: 'Pass HTTPS, security headers and security.txt.', glyph: 'lock', test: allPass(['security.https', 'security.headers', 'security.security-txt']) },
   { id: 'browser-tested', name: 'Browser Tested', xp: 25, how: 'Submit a report that ran the browser checks.', glyph: 'eye', test: ({ snap }) => snap.browser },
   { id: 'level-3', name: 'Agent-Readable', xp: 50, how: 'Reach isitagentready-compatible level 3.', glyph: 'step3', test: ({ snap }) => snap.level >= 3 },
@@ -113,7 +113,7 @@ export function submissionProblem(report, now = Date.now()) {
   // The standing is for the site, so the report must be for its home page and must not have been redirected to another site.
   try {
     const asked = new URL(report.url);
-    if (asked.pathname !== '/' ) return 'Only a scan of the home page can join the League. Scan https://' + host + '/ and submit that report.';
+    if (asked.pathname !== '/' || asked.search) return 'Only a scan of the home page can join the League. Scan https://' + host + '/ and submit that report.';
     if (normalizeHost(asked.host) !== host) return 'That address redirects to a different site. Scan ' + host + ' directly and submit that report.';
   } catch { return 'This report has no valid URL.'; }
   const at = Date.parse(report.scanned_at);
@@ -155,9 +155,10 @@ export function applySubmission(prev, snap, now = Date.now()) {
   const events = [];
   const nowIso = new Date(now).toISOString();
   const e = prev
-    ? { ...prev, achievements: { ...prev.achievements }, history: [...prev.history] }
-    : { host: snap.host, joined_at: nowIso, best_score: snap.score, best_level: snap.level, xp: 0, streak: 0, best_streak: 0, streak_week: null, achievements: {}, history: [] };
-  const first = prev ? prev.history[0] : point(snap);
+    ? { ...prev, achievements: { ...prev.achievements }, history: [...prev.history], rank_history: [...(prev.rank_history || prev.history || [])] }
+    : { host: snap.host, joined_at: nowIso, first_score: snap.score, best_score: snap.score, best_level: snap.level, xp: 0, streak: 0, best_streak: 0, streak_week: null, achievements: {}, history: [], rank_history: [] };
+  e.first_score ??= e.history[0]?.score ?? e.best_score ?? snap.score;
+  const first = { score: e.first_score };
 
   let gained = 0;
   if (!prev) {
@@ -191,13 +192,21 @@ export function applySubmission(prev, snap, now = Date.now()) {
   Object.assign(e, {
     score: snap.score, level: snap.level, layers: snap.layers, report_id: snap.report_id, browser: snap.browser,
     best_score: Math.max(e.best_score, snap.score), best_level: Math.max(e.best_level, snap.level),
-    updated_at: nowIso, updated_at_report: snap.at,
+    updated_at: snap.at, updated_at_report: snap.at,
   });
   const last = e.history[e.history.length - 1];
   const sameDay = last && Date.parse(snap.at) - Date.parse(last.at) < 6 * 3_600_000;
   if (last && sameDay && last.score === snap.score && last.level === snap.level) e.history[e.history.length - 1] = point(snap);
   else e.history.push(point(snap));
   if (e.history.length > HISTORY_MAX) e.history = e.history.slice(-HISTORY_MAX);
+  if (!e.rank_history.length || e.rank_history[e.rank_history.length - 1].score !== snap.score) e.rank_history.push(point(snap));
+  const cutoff = Date.parse(snap.at) - CLIMB_MS;
+  let baseline = -1;
+  for (let i = 0; i < e.rank_history.length; i++) {
+    if (Date.parse(e.rank_history[i].at) <= cutoff) baseline = i;
+    else break;
+  }
+  if (baseline > 0) e.rank_history = e.rank_history.slice(baseline);
 
   const passed = new Set(snap.passed);
   const applicable = Object.entries(snap.layers).map(([id, score]) => ({ id, score }));
@@ -221,7 +230,7 @@ export const isActive = (e, now = Date.now()) => now - Date.parse(e.updated_at) 
 
 /** Score gain over the last 30 days: against the last snapshot at or before the window start, else the first one. */
 export function gainOf(e, now = Date.now()) {
-  const h = e.history || [];
+  const h = e.rank_history || e.history || [];
   if (!h.length) return 0;
   const start = now - CLIMB_MS;
   let base = h[0];

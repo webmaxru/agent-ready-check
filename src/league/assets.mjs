@@ -96,6 +96,7 @@ ul.plain li{margin-bottom:4px}
 .ranks li{display:flex;flex-direction:column;gap:2px;background:var(--ink-deep);border:var(--b) solid var(--plum);padding:8px}
 .ranks b{font-family:var(--font-pixel);font-size:20px;color:var(--paper)}
 .console .div{border-color:var(--paper)}
+.console .btn{color:var(--paper)}
 .console .actions{display:flex;flex-wrap:wrap;gap:var(--u)}
 .console .btn.quiet{background:var(--ink);color:var(--paper);border-color:var(--paper)}
 .console .btn.quiet:hover{background:var(--paper);color:var(--ink)}
@@ -136,6 +137,7 @@ svg.hist{display:block;background:var(--panel);border:var(--b) solid var(--ink);
 .teaser{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
 .teaser li{display:inline-flex;align-items:center;gap:6px;background:var(--ink-deep);border:var(--b) solid var(--plum);padding:4px 8px;font-size:14px}
 .teaser .tile{width:24px;height:24px;border-color:var(--plum)}
+.teaser .xpn{color:var(--mint)}
 .lp-quests h3{margin-bottom:var(--u)}
 
 /* celebration */

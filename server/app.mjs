@@ -77,7 +77,7 @@ class HttpError extends Error {
 export function createApp(o) {
   const {
     scan, store, rateLimit, browserAvailable = false, resolve = null, allowPrivate = false, assets = null,
-    renderers = defaultRenderers, cacheMs = 600_000, maxBodyBytes = 16_384, allowedOrigins = [], csp = DEFAULT_CSP, runtime = 'node', leagueAdminToken = '', leagueRemovalUrl = undefined,
+    renderers = defaultRenderers, cacheMs = 600_000, maxBodyBytes = 16_384, allowedOrigins = [], csp = DEFAULT_CSP, runtime = 'node', trustProxy = false, leagueAdminToken = '', leagueRemovalUrl = undefined,
   } = o;
   const R = { ...defaultRenderers, ...renderers };
   const app = new Hono();
@@ -95,7 +95,36 @@ export function createApp(o) {
     const host = (c.req.header('x-forwarded-host') || '').split(',')[0].trim() || c.req.header('host') || u.host;
     return `${proto}://${host}`;
   };
-  const clientKey = (c) => c.req.header('cf-connecting-ip') || (c.req.header('x-forwarded-for') || '').split(',')[0].trim() || c.env?.remoteAddress || c.env?.incoming?.socket?.remoteAddress || 'anonymous';
+  const clientKey = (c) => {
+    const remote = c.env?.remoteAddress || c.env?.incoming?.socket?.remoteAddress;
+    if (runtime === 'node') return (trustProxy && (c.req.header('x-forwarded-for') || '').split(',')[0].trim()) || remote || 'anonymous';
+    return c.req.header('cf-connecting-ip') || (c.req.header('x-forwarded-for') || '').split(',')[0].trim() || remote || 'anonymous';
+  };
+  const readLimitedBody = async (c) => {
+    const length = Number(c.req.header('content-length'));
+    if (Number.isFinite(length) && length > maxBodyBytes) {
+      await c.req.raw.body?.cancel().catch(() => {});
+      return { tooLarge: true };
+    }
+    const reader = c.req.raw.body?.getReader();
+    if (!reader) return { text: '' };
+    const chunks = []; let size = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > maxBodyBytes) {
+          await reader.cancel().catch(() => {});
+          return { tooLarge: true };
+        }
+        chunks.push(value);
+      }
+    } finally { reader.releaseLock(); }
+    const body = new Uint8Array(size); let offset = 0;
+    for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+    return { text: new TextDecoder().decode(body) };
+  };
 
   const problem = (c, status, detail, extra = {}) => {
     const body = { type: extra.type || 'about:blank', title: extra.title || STATUS_TITLES[status] || 'Error', status, detail, instance: new URL(c.req.url).pathname, ...(extra.fields || {}) };
@@ -112,10 +141,10 @@ export function createApp(o) {
   };
 
   /** An HTML page that also answers Accept: text/markdown. */
-  const htmlOrMd = async (c, { html, md, headers = {} }) => {
+  const htmlOrMd = async (c, { html, md, headers = {}, htmlHeaders = {}, mdHeaders = {} }) => {
     c.header('Vary', 'Accept');
-    if (wantsMarkdown(c.req.header('accept'))) return sendText(c, typeof md === 'function' ? await md() : md, MD, headers);
-    return sendText(c, typeof html === 'function' ? await html() : html, HTML, headers);
+    if (wantsMarkdown(c.req.header('accept'))) return sendText(c, typeof md === 'function' ? await md() : md, MD, { ...headers, ...mdHeaders });
+    return sendText(c, typeof html === 'function' ? await html() : html, HTML, { ...headers, ...htmlHeaders });
   };
 
   const mdPage = (c, path, mdText, description) => {
@@ -270,7 +299,7 @@ export function createApp(o) {
     if (joins.size > 5000) joins.delete(joins.keys().next().value);
     return true;
   };
-  const leagueEntries = async () => { try { return await league.list(); } catch { return []; } };
+  const leagueEntries = async () => league.list();
   const leagueStats = (entries) => {
     const act = entries.filter((e) => isActive(e, clock()));
     return { players: act.length, average: act.length ? Math.round(act.reduce((s, e) => s + e.score, 0) / act.length) : 0, top: act.reduce((m, e) => Math.max(m, e.score), 0), achievements: act.reduce((s, e) => s + Object.keys(e.achievements || {}).length, 0) };
@@ -318,6 +347,7 @@ export function createApp(o) {
     const out = await league.submit(snap.host, (prev) => applySubmission(prev, snap, clock()));
     if (out.error === 'stale') throw new HttpError(409, out.message);
     if (out.error === 'suppressed') throw new HttpError(403, out.message);
+    if (out.error === 'capacity') throw new HttpError(503, out.message);
     return { ...out, host: snap.host, created: out.events.some((e) => e.type === 'joined') };
   }
   const joinJson = async (c, out, status) => {
@@ -344,7 +374,11 @@ export function createApp(o) {
   app.post('/api/league', async (c) => {
     if (!joinAllowed(c)) return problem(c, 429, 'Too many League submissions from this client. Try again later.', { headers: { 'Retry-After': '3600' } });
     let body;
-    try { const raw = await c.req.text(); if (raw.length > maxBodyBytes) return problem(c, 413, `The body is larger than ${maxBodyBytes} bytes.`); body = JSON.parse(raw || '{}'); } catch { return problem(c, 400, 'The body is not valid JSON. Send {"report_id": "..."} or {"url": "https://example.com"}.'); }
+    try {
+      const read = await readLimitedBody(c);
+      if (read.tooLarge) return problem(c, 413, `The body is larger than ${maxBodyBytes} bytes.`);
+      body = JSON.parse(read.text || '{}');
+    } catch { return problem(c, 400, 'The body is not valid JSON. Send {"report_id": "..."} or {"url": "https://example.com"}.'); }
     try {
       let report = null;
       if (body && typeof body.report_id === 'string') {
@@ -392,7 +426,7 @@ export function createApp(o) {
           const e = entries.find((x) => x.host === normalizeHost(host));
           if (!e) return null;
           const d = publicEntry(entries, e);
-          return { data: d, text: `${d.host}: score ${d.score}, ${d.division} division, #${d.ranks.top ?? '-'} of ${d.players} on the Top board, ${d.xp} XP, ${d.achievements.length} achievements, streak ${d.streak} weeks. Profile: ${local.url.replace(/\/mcp.*$/, '')}/league/${encodeURIComponent(d.host)}` };
+          return { data: d, text: `${d.host}: score ${d.score}, ${d.division} division, #${d.ranks.top ?? '-'} of ${d.players} on the Top board, ${d.xp} XP, ${d.achievements.length} achievements, streak ${d.streak} weeks. Profile: ${baseOf(c)}/league/${encodeURIComponent(d.host)}` };
         }
         const rows = rankBoard(entries, board, clock()).slice(0, limit);
         return { data: { board, ...leagueStats(entries), rows }, text: [`${board} board, ${rows.length} of ${leagueStats(entries).players} sites:`, ...rows.map((r) => `#${r.rank} ${r.host}: score ${r.score}, ${r.division}, ${r.xp} XP`)].join('\n') };
@@ -492,9 +526,9 @@ export function createApp(o) {
     if (!joinAllowed(c)) return errorPage(c, 429, 'Too many League submissions from this client. Try again in an hour.');
     let id = '';
     try {
-      const raw = await c.req.text();
-      if (raw.length > maxBodyBytes) return errorPage(c, 413, 'The submission is too large.');
-      id = /json/i.test(c.req.header('content-type') || '') ? String(JSON.parse(raw || '{}').report_id || '') : String(new URLSearchParams(raw).get('report_id') || '');
+      const read = await readLimitedBody(c);
+      if (read.tooLarge) return errorPage(c, 413, 'The submission is too large.');
+      id = /json/i.test(c.req.header('content-type') || '') ? String(JSON.parse(read.text || '{}').report_id || '') : String(new URLSearchParams(read.text).get('report_id') || '');
     } catch { return errorPage(c, 400, 'The submission could not be read.'); }
     if (!ID_RE.test(id)) return errorPage(c, 400, 'Submit a report from its report page (the Join button).');
     try {
@@ -514,17 +548,31 @@ export function createApp(o) {
     return c.body(svg, 200, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'public, max-age=600' });
   });
   app.get('/league/:host', async (c) => {
-    const raw = c.req.param('host'); const md = raw.endsWith('.md');
-    const host = normalizeHost(md ? raw.slice(0, -3) : raw);
     const entries = await leagueEntries();
+    const raw = c.req.param('host'); const rawHost = normalizeHost(raw); const suffix = raw.endsWith('.md');
+    const literal = entries.find((e) => e.host === rawHost);
+    const aliasHost = suffix ? normalizeHost(raw.slice(0, -3)) : rawHost;
+    const alias = suffix ? entries.find((e) => e.host === aliasHost) : null;
+    let host; let md;
+    if (suffix && literal && alias) {
+      c.header('Vary', 'Accept');
+      md = wantsMarkdown(c.req.header('accept'));
+      host = md ? aliasHost : rawHost;
+    } else if (literal) {
+      host = rawHost;
+      md = suffix ? wantsMarkdown(c.req.header('accept')) : false;
+    } else {
+      host = suffix ? aliasHost : rawHost;
+      md = suffix;
+    }
     const st = standing(entries, host, clock());
     if (!st) return errorPage(c, 404, `${host} has not joined the League yet. Scan it, then press Join on the report page.`);
     const base = baseOf(c);
-    if (md) return sendText(c, renderProfileMarkdown({ base, st, now: clock() }), MD, { 'cache-control': 'public, max-age=60' });
+    if (md) return sendText(c, renderProfileMarkdown({ base, st, removalUrl: leagueRemovalUrl, now: clock() }), MD, { 'cache-control': 'public, max-age=60' });
     const fresh = clock() - Date.parse(st.entry.updated_at) < 600_000;
     const banner = fresh ? (c.req.query('joined') ? 'joined' : c.req.query('updated') ? 'updated' : null) : null;
     const report = await store.get(st.entry.report_id).catch(() => null);
-    return htmlOrMd(c, { html: () => renderProfileHtml({ removalUrl: leagueRemovalUrl, base, st, quests: report ? quests(report) : null, report, banner, now: clock() }), md: () => renderProfileMarkdown({ base, st, now: clock() }), headers: { 'cache-control': banner ? 'no-store' : 'public, max-age=60', link: `</league/${encodeURIComponent(host)}.md>; rel="alternate"; type="text/markdown", </api/league/${encodeURIComponent(host)}>; rel="alternate"; type="application/json"` } });
+    return htmlOrMd(c, { html: () => renderProfileHtml({ removalUrl: leagueRemovalUrl, base, st, quests: report ? quests(report) : null, report, banner, now: clock() }), md: () => renderProfileMarkdown({ base, st, removalUrl: leagueRemovalUrl, now: clock() }), headers: { 'cache-control': banner ? 'no-store' : 'public, max-age=60', link: `</league/${encodeURIComponent(host)}.md>; rel="alternate"; type="text/markdown", </api/league/${encodeURIComponent(host)}>; rel="alternate"; type="application/json"` } });
   });
 
   app.get('/scan', async (c) => {
@@ -553,7 +601,7 @@ export function createApp(o) {
     const report = { ...r, report_url: `${base}/r/${r.id}` };
     if (c.req.param('id').endsWith('.json')) return c.json(report);
     if (c.req.param('id').endsWith('.md')) return sendText(c, R.renderReportMarkdown(report, { baseUrl: base, reportId: r.id }), MD, { 'cache-control': 'public, max-age=3600' });
-    return htmlOrMd(c, { html: async () => R.renderReportHtml(report, { baseUrl: base, reportId: r.id, filter: R.parseFilter ? R.parseFilter(new URL(c.req.url).searchParams) : undefined, browserAvailable, league: await panelFor(report) }), md: () => R.renderReportMarkdown(report, { baseUrl: base, reportId: r.id }), headers: { 'cache-control': 'public, max-age=3600', link: `</r/${r.id}.md>; rel="alternate"; type="text/markdown", </api/reports/${r.id}>; rel="alternate"; type="application/json"` } });
+    return htmlOrMd(c, { html: async () => R.renderReportHtml(report, { baseUrl: base, reportId: r.id, filter: R.parseFilter ? R.parseFilter(new URL(c.req.url).searchParams) : undefined, browserAvailable, league: await panelFor(report) }), md: () => R.renderReportMarkdown(report, { baseUrl: base, reportId: r.id }), headers: { 'cache-control': 'public, max-age=3600', link: `</r/${r.id}.md>; rel="alternate"; type="text/markdown", </api/reports/${r.id}>; rel="alternate"; type="application/json"` }, htmlHeaders: { 'cache-control': 'no-cache' } });
   });
 
   const badge = async (c, host) => {

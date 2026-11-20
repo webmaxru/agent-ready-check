@@ -340,7 +340,7 @@ export function renderLeagueMarkdown({ base, board = 'top', rows, stats, crowns 
   return L.join('\n');
 }
 
-export function renderProfileMarkdown({ base, st, now = Date.now() }) {
+export function renderProfileMarkdown({ base, st, now = Date.now(), removalUrl = DEFAULT_REMOVAL_URL }) {
   const b = String(base || '').replace(/\/+$/, ''); const e = st.entry;
   const pl = playerLevel(e.xp);
   const L = [`# ${mdc(e.host)} on the Agent-Ready League`, '',
@@ -350,7 +350,7 @@ export function renderProfileMarkdown({ base, st, now = Date.now() }) {
     `- Last scan: ${e.updated_at.slice(0, 10)}${isActive(e, now) ? '' : ' (dormant, off the boards)'}`, '',
     '## Achievements', '', ...ACHIEVEMENTS.map((a) => `- [${e.achievements[a.id] ? 'x' : ' '}] ${a.name}: ${a.how}`), ''];
   if (st.crowns.length) L.push(`Holds the layer crown for: ${st.crowns.map(layerName).join(', ')}.`, '');
-  L.push(`Profile: ${b}${hostUrl(e.host)}`, '');
+  L.push(`Profile: ${b}${hostUrl(e.host)}`, '', '## Community rankings', '',
+    `This listing is community-submitted and has not been verified by the site's owner. To request removal, [open an issue](${removalUrl}) with the host name.`, '');
   return L.join('\n');
 }
-

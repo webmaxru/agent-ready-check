@@ -27,7 +27,7 @@ One interface (`list`, `get`, `submit(host, fn)`, `remove`) over the same stores
 | Runtime | Where |
 | --- | --- |
 | memory | process memory (lost on restart) |
-| fs | `league.json` next to the reports |
+| fs | `.league.json` next to the reports |
 | Azure Blob | `board.json` in a separate `league` container (the `reports` container expires blobs after 30 days) |
 | D1 | `league` table, one row per host, compare-and-swap on a version column |
 

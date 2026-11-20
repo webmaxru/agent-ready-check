@@ -46,9 +46,11 @@ export function docLeague({ load, save, now = () => Date.now() }) {
         await pause(attempt);
         const { entries, suppressed, tag } = await read();
         if (suppressed[h]) return { entry: null, changed: false, events: [], error: 'suppressed', message: 'This site was removed from the League and cannot be added again by a submission.' };
-        const out = await fn(entries[h] || null);
+        const retained = prune({ ...entries }, now());
+        const out = await fn(retained[h] || null);
         if (!out.changed) return out;
-        const next = prune({ ...entries, [h]: out.entry }, now());
+        const next = prune({ ...retained, [h]: out.entry }, now());
+        if (!Object.hasOwn(next, h)) return { entry: null, changed: false, events: [], error: 'capacity', message: 'The League is full and cannot retain this standing. Try again later.' };
         if (await save(doc(next, suppressed), tag)) return out;
       }
       throw new Error('The League is busy, try again in a moment.');

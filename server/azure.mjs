@@ -69,7 +69,7 @@ export function createAzureHandler(env = {}, o = {}) {
   return async (request) => {
     const url = originalUrl(request.url, request.headers);
     const init = { method: request.method, headers: request.headers, redirect: 'manual' };
-    if (!['GET', 'HEAD'].includes(request.method)) { init.body = await request.arrayBuffer(); }
+    if (!['GET', 'HEAD'].includes(request.method) && request.body) { init.body = request.body; init.duplex = 'half'; }
     return app.fetch(new Request(url, init));
   };
 }
