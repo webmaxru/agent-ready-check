@@ -28,6 +28,7 @@ Connect to the stateless Streamable HTTP MCP server at \`${base}/mcp\` (protocol
 - \`list_checks\` {"layer": "crawl"}: the check catalogue, optionally for one layer.
 - \`explain_check\` {"id": "content.markdown-negotiation"}: what a check tests, its standard and status, why it matters and how to fix it.
 - \`get_report\` {"id": "<report id>"}: a stored report (kept 30 days).
+- \`get_league\` {"board": "top"} or {"host": "example.com"}: the Agent-Ready League leaderboard or one site's standing.
 
 ## Option 2: HTTP API
 

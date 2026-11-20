@@ -15,13 +15,15 @@ export const PAGES = [
   { path: '/', title: SITE.name, md: '/index.md', updated: 'home', summary: 'Scan a site and read the report.' },
   { path: '/docs', title: 'API, MCP, WebMCP and CLI', md: '/docs.md', updated: 'docs', summary: 'How agents and people use the service: HTTP API, MCP tools, WebMCP tool, CLI, badges.' },
   { path: '/checks', title: 'The checks', md: '/checks.md', updated: 'checks', summary: `All ${SITE.checksCount} checks by layer, with their standard and its status.` },
+  { path: '/league', title: 'Agent-Ready League', md: '/league.md', updated: 'league', summary: 'The leaderboard of the most agent-ready websites: boards, divisions, XP and achievements.' },
   { path: '/privacy', title: 'Privacy', md: '/privacy.md', updated: 'privacy', summary: 'What the service stores and for how long.' },
   { path: '/terms', title: 'Terms of use', md: '/terms.md', updated: 'privacy', summary: 'Fair use of the free scanner and its API.' },
 ];
 
 const SIGNAL = 'Content-Signal: search=yes, ai-input=yes, ai-train=yes';
 // Paths that start scans or serve per-scan data: crawlers should not trigger scans by following links.
-const SCAN_PATHS = ['/scan', '/api/scan', '/r/', '/badge'];
+const SCAN_PATHS = ['/scan', '/api/scan', '/r/', '/badge', '/league/join', '/api/league'];
+// Note: /league and /league/{host} stay crawlable. Only the submission endpoints are off limits.
 
 export function robotsTxt(base) {
   const b = trimBase(base);
@@ -61,9 +63,10 @@ export function llmsTxt(base) {
     '',
     '## Use it',
     '',
-    `- [MCP server card](${b}/mcp/server-card): the MCP endpoint is ${b}/mcp (stateless Streamable HTTP, POST only), tools scan_site, list_checks, explain_check, get_report.`,
+    `- [MCP server card](${b}/mcp/server-card): the MCP endpoint is ${b}/mcp (stateless Streamable HTTP, POST only), tools scan_site, list_checks, explain_check, get_report, get_league.`,
     `- [HTTP API (OpenAPI 3.1)](${b}/openapi.json): POST /api/scan with {"url": "..."}; format "agent" returns only the fixes as Markdown prompts.`,
     `- [Agent Skill](${b}/.well-known/agent-skills/${SKILL_NAME}/SKILL.md): step-by-step instructions for agents.`,
+    `- [Agent-Ready League](${b}/league.md): the leaderboard of top agent-ready websites; JSON at ${b}/api/league, one site at ${b}/api/league/{host}.`,
     `- [API, MCP, WebMCP and CLI docs](${b}/docs.md): every surface with examples.`,
     '',
     '## Reference',
@@ -115,9 +118,13 @@ curl -s -X POST ${b}/api/scan -H 'content-type: application/json' -d '{"url":"ht
 curl -s ${b}/api/checks
 curl -s ${b}/api/checks/crawl.content-signal
 curl -s ${b}/api/reports/REPORT_ID
+curl -s "${b}/api/league?board=top&limit=10"
+curl -s ${b}/api/league/example.com
+curl -s -X POST ${b}/api/league -H 'content-type: application/json' -d '{"report_id":"REPORT_ID"}'
 \`\`\`
 
 - Formats: \`json\` (the full report), \`markdown\` (the report as Markdown) and \`agent\` (only the failing and warning checks, as fix prompts for a coding agent).
+- The League (${b}/league): \`GET /api/league?board=top|climbers|grinders|fresh\` lists a board, \`GET /api/league/{host}\` returns one standing, and \`POST /api/league\` with \`{"report_id"}\` or \`{"url"}\` joins or updates the site's standing from a report that is at most 7 days old. Joining publishes the host name, score, level and score history.
 - Errors are \`application/problem+json\` (RFC 9457).
 - Rate limit: scans per client per window, announced with \`RateLimit-Policy\` and \`RateLimit\` (draft-ietf-httpapi-ratelimit-headers-11). Over the limit you get 429 with \`Retry-After\`.
 - The same URL is answered from a 10-minute cache. Reports are stored for 30 days at \`/r/REPORT_ID\` (HTML, or Markdown with \`Accept: text/markdown\`).
@@ -132,6 +139,7 @@ Stateless Streamable HTTP at ${b}/mcp. Protocol 2026-07-28 (with \`server/discov
 | \`list_checks\` | optional \`layer\` | Lists the checks |
 | \`explain_check\` | \`id\` | Explains one check: standard, status, why, fix |
 | \`get_report\` | \`id\` | Returns a stored report |
+| \`get_league\` | \`board\`, \`host\`, \`limit\` (all optional) | Reads the Agent-Ready League: a board, or one site's standing |
 
 \`\`\`bash
 curl -s ${b}/mcp -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \\

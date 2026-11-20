@@ -12,6 +12,7 @@
 //   REPORTS_CONTAINER           blob container (default "reports")
 //   BROWSER_RUNNER_URL          optional browser runner endpoint(s), comma-separated (.../collect)
 //   RUNNER_TOKEN                bearer token for the runner
+//   LEAGUE_ADMIN_TOKEN          bearer token for DELETE /api/league/{host} (moderation); unset disables it
 //   RATE_LIMIT, RATE_WINDOW     scans per client per window (default 10 per 600 s; per function instance)
 //   SCAN_TIMEOUT_MS             network budget per scan (default 30000; Static Web Apps ends API calls at 45 s)
 import { createApp } from './app.mjs';
@@ -63,7 +64,7 @@ export function createAzureHandler(env = {}, o = {}) {
       browserData: browser && runnerOn ? remoteBrowser(url, env, scanTimeoutMs + 5_000) : null,
       fetcherOptions: { scanTimeoutMs },
     }),
-    store, rateLimit, browserAvailable: runnerOn, resolve, baseUrl: env.BASE_URL || undefined, runtime: 'azure',
+    store, rateLimit, browserAvailable: runnerOn, resolve, baseUrl: env.BASE_URL || undefined, runtime: 'azure', leagueAdminToken: env.LEAGUE_ADMIN_TOKEN || '', leagueRemovalUrl: env.LEAGUE_REMOVAL_URL || undefined,
   });
   return async (request) => {
     const url = originalUrl(request.url, request.headers);

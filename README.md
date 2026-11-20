@@ -43,6 +43,10 @@ Both scanners ran on the same 12 sites from the same machine: Cloudflare's throu
 
 The Level matches on 12 of 12 sites and 276 of 276 individual check results match. The first run disagreed on 8 results; three of our compat rules were aligned with what the live scanner does (a robots.txt `Sitemap` line must lead to a sitemap; ARD entries need `displayName`; an `Offer` on software is not a shop), and one difference was Cloudflare rate-limiting its own WebMCP check.
 
+## The Agent-Ready League
+
+Anyone can add a public site to a community-submitted leaderboard (listings are not verified by site owners; removal on request) at `/league`: divisions from Bronze to Diamond, four boards (top, climbers, grinders, fresh), XP, weekly streaks, 20 achievements and layer crowns. Every report page shows the next "quests", the fixes worth the most points. Join from a report page, or `POST /api/league` with `{"report_id": "..."}`. Read it with `GET /api/league` or the MCP tool `get_league`. Rules, storage and moderation: [docs/LEAGUE.md](docs/LEAGUE.md). `LEAGUE_ADMIN_TOKEN` enables removing (and restoring) a listing; `LEAGUE_REMOVAL_URL` sets where owners are sent to ask for removal.
+
 ## Scoring
 
 - Each check is `pass` (1), `warn` (0.5) or `fail` (0); `info`, `neutral` (not applicable), `skipped` (needs a browser) and `error` (network) do not count.
@@ -70,7 +74,7 @@ OpenAPI 3.1 at `/openapi.json`, listed in the RFC 9727 catalog at `/.well-known/
 
 ### MCP
 
-Stateless Streamable HTTP at `/mcp` (protocol 2026-07-28 with `server/discover`; the 2025-11-25 and 2025-06-18 handshakes also work). Tools: `scan_site`, `list_checks`, `explain_check`, `get_report`. Server card at `/mcp/server-card` and `/.well-known/mcp/server-card.json`. Browser origins other than the service's own are refused (403).
+Stateless Streamable HTTP at `/mcp` (protocol 2026-07-28 with `server/discover`; the 2025-11-25 and 2025-06-18 handshakes also work). Tools: `scan_site`, `list_checks`, `explain_check`, `get_report`, `get_league`. Server card at `/mcp/server-card` and `/.well-known/mcp/server-card.json`. Browser origins other than the service's own are refused (403).
 
 ```json
 { "mcpServers": { "agent-ready-check": { "type": "http", "url": "https://<host>/mcp" } } }

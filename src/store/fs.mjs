@@ -3,6 +3,29 @@
 import { mkdir, readFile, writeFile, readdir, stat, unlink, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RETENTION_MS, newId, hostOf, normHost, ID_RE, serialize } from './common.mjs';
+import { docLeague } from '../league/store.mjs';
+
+/** League standings in one JSON file next to the reports. Writes are serialised in this process and atomic on disk. */
+export function fsLeague({ dir, now = () => Date.now() }) {
+  const file = join(dir, 'league.json');
+  let queue = Promise.resolve();
+  const api = docLeague({
+    now,
+    load: async () => {
+      try { return { doc: JSON.parse(await readFile(file, 'utf8')), tag: null }; } catch { return { doc: null, tag: null }; }
+    },
+    save: async (doc) => {
+      await mkdir(dir, { recursive: true });
+      const tmp = `${file}.${process.pid}.tmp`;
+      await writeFile(tmp, JSON.stringify(doc));
+      await rename(tmp, file);
+      return true;
+    },
+  });
+  // The file store has no version tag, so read-modify-write cycles run one at a time.
+  const serial = (fn) => (...a) => { const run = queue.then(() => fn(...a)); queue = run.catch(() => {}); return run; };
+  return { ...api, kind: 'fs', submit: serial(api.submit), remove: serial(api.remove) };
+}
 
 export function fsStore({ dir, retentionMs = RETENTION_MS, now = () => Date.now() } = {}) {
   if (!dir) throw new Error('fsStore needs a dir');
@@ -40,6 +63,7 @@ export function fsStore({ dir, retentionMs = RETENTION_MS, now = () => Date.now(
   return {
     kind: 'fs',
     dir,
+    league: fsLeague({ dir, now }),
     async put(report) {
       await loadIndex();
       const id = report.id || newId();

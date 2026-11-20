@@ -83,6 +83,21 @@ export const TOOLS = [
     },
     annotations: { title: 'Get a report', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
+  {
+    name: 'get_league',
+    title: 'Read the Agent-Ready League',
+    description: 'Reads the Agent-Ready League, the public leaderboard of agent-ready websites that opted in. Without host it returns a board (top, climbers, grinders or fresh); with host it returns that site\'s standing: ranks, division, XP, streak, achievements and score history. Read only. Joining is done by submitting a report to POST /api/league.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        board: { type: 'string', enum: ['top', 'climbers', 'grinders', 'fresh'], description: 'Board to list. Default top.' },
+        host: { type: 'string', description: 'A host name such as example.com. Returns that site\'s standing instead of a board.', maxLength: 253 },
+        limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Rows to return. Default 10.' },
+      },
+      additionalProperties: false,
+    },
+    annotations: { title: 'Read the League', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
 ];
 
 /** The compact text an agent reads first. */
@@ -136,10 +151,11 @@ const jsonResponse = (body, status = 200, headers = {}) => new Response(body ===
  * @param {object} o
  * @param {(url:string, opts:{browser:boolean})=>Promise<object>} o.scan  returns a stored report (with id, report_url); throws Error with .status on refusal
  * @param {(id:string)=>Promise<object|null>} o.getReport
+ * @param {(q:{board?:string, host?:string, limit?:number})=>Promise<object|null>} [o.getLeague]  read-only League lookup
  * @param {string[]} [o.allowedOrigins]  extra browser origins allowed besides the request's own origin
  * @returns {(request: Request) => Promise<Response>}
  */
-export function createMcpHandler({ scan, getReport, allowedOrigins = [] }) {
+export function createMcpHandler({ scan, getReport, getLeague = async () => null, allowedOrigins = [] }) {
   async function callTool(name, args = {}) {
     const text = (t, extra = {}) => ({ content: [{ type: 'text', text: t }], ...extra });
     const err = (t) => ({ content: [{ type: 'text', text: t }], isError: true });
@@ -181,6 +197,13 @@ export function createMcpHandler({ scan, getReport, allowedOrigins = [] }) {
         const report = /^[a-z0-9]{6,32}$/.test(String(args.id || '')) ? await getReport(args.id) : null;
         if (!report) return err(`No stored report with id "${args.id}" (reports are kept 30 days).`);
         return text(summarize(report), { structuredContent: structured(report) });
+      }
+      case 'get_league': {
+        if (args.board !== undefined && !['top', 'climbers', 'grinders', 'fresh'].includes(args.board)) return err('Unknown board. Boards: top, climbers, grinders, fresh.');
+        const limit = Math.max(1, Math.min(50, Number.isInteger(args.limit) ? args.limit : 10));
+        const out = await getLeague({ board: args.board || 'top', host: typeof args.host === 'string' ? args.host : undefined, limit });
+        if (!out) return err(args.host ? `${args.host} has not joined the League.` : 'The League is not available.');
+        return text(out.text, { structuredContent: out.data });
       }
       default:
         throw new RpcError(-32602, `Unknown tool: ${name}`);

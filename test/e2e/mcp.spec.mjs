@@ -17,7 +17,7 @@ test('server/discover and tools/list', async ({ request }) => {
   const d = await (await call(request, 'server/discover', {})).json();
   expect(d.result.supportedVersions).toContain('2026-07-28');
   const l = await (await call(request, 'tools/list', {})).json();
-  expect(l.result.tools.map((t) => t.name)).toEqual(['scan_site', 'list_checks', 'explain_check', 'get_report']);
+  expect(l.result.tools.map((t) => t.name)).toEqual(['scan_site', 'list_checks', 'explain_check', 'get_report', 'get_league']);
 });
 
 test('tools/call scan_site on the service itself', async ({ request }) => {

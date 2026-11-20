@@ -100,6 +100,15 @@ resource reportsContainer 'Microsoft.Storage/storageAccounts/blobServices/contai
   }
 }
 
+// League standings: one board.json blob, kept in its own container so the 30-day report lifecycle rule below never touches it.
+resource leagueContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobService
+  name: 'league'
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
 // Reports are kept 30 days: the lifecycle rule deletes blobs 30 days after their last write (no cleanup job).
 resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
   parent: storage
