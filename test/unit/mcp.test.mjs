@@ -35,10 +35,10 @@ test('server/discover (2026-07-28) lists versions, capabilities and serverInfo i
   assert.equal(body.result.resultType, 'complete');
 });
 
-test('tools/list: four tools with schemas and annotations, deterministic order', async () => {
+test('tools/list: five tools with schemas and annotations, deterministic order', async () => {
   const { body } = await rpc('tools/list', {});
   const names = body.result.tools.map((t) => t.name);
-  assert.deepEqual(names, ['scan_site', 'list_checks', 'explain_check', 'get_report']);
+  assert.deepEqual(names, ['scan_site', 'list_checks', 'explain_check', 'get_report', 'get_league']);
   for (const t of body.result.tools) {
     assert.equal(t.inputSchema.type, 'object');
     assert.ok(t.description.length > 40);

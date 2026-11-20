@@ -18,7 +18,7 @@ import { badgeWidth } from './badge.mjs';
 import { SITE } from '../agent-files/site.mjs';
 import catalog from '../catalog.json' with { type: 'json' };
 
-export const ASSET_VERSION = '2';
+export const ASSET_VERSION = '3';
 const LEVEL_NAMES = ['Not Ready', 'Basic Web Presence', 'Bot-Aware', 'Agent-Readable', 'Agent-Integrated', 'Agent-Native'];
 const STATUSES = ['fail', 'warn', 'pass', 'info', 'error', 'skipped', 'neutral'];
 
@@ -80,6 +80,7 @@ ${canonical ? `<meta property="og:url" content="${esc(canonical)}">\n` : ''}${js
 <a class="brand" href="/">${LOGO}${esc(SITE.name)}</a>
 <nav aria-label="Main">
 <a href="/"${path === '/' ? ' aria-current="page"' : ''}>Scan</a>
+<a href="/league"${cur('/league')}>League</a>
 <a href="/docs"${cur('/docs')}>API and MCP</a>
 <a href="/checks"${cur('/checks')}>Checks</a>
 <a href="${esc(SITE.repo)}">Source</a>
@@ -276,10 +277,11 @@ ${Object.entries(keep).map(([k, v]) => `<input type="hidden" name="${esc(k)}" va
 /**
  * Full HTML report page.
  * @param {object} report  the scan report (SPEC "Report contract")
- * @param {{ baseUrl?: string, reportId?: string, filter?: object, browserAvailable?: boolean }} [o]
+ * @param {{ baseUrl?: string, reportId?: string, filter?: object, browserAvailable?: boolean, league?: string }} [o]
+ *   league: ready-made HTML for the Agent-Ready League panel (src/league/render.mjs leaguePanel), placed under the score console
  *   filter: { role, status[] } (see parseFilter) applied server-side as the hidden attribute, so filters work without JS.
  */
-export function renderReportHtml(report, { baseUrl = '', reportId, filter, browserAvailable = false } = {}) {
+export function renderReportHtml(report, { baseUrl = '', reportId, filter, browserAvailable = false, league = '' } = {}) {
   copyN = 0;
   const f = filter ? { role: filter.role || 'all', status: [].concat(filter.status || []) } : { role: 'all', status: [] };
   const id = reportId || report.id;
@@ -338,6 +340,7 @@ ${L.badge ? `<p class="badge"><img src="${esc(L.badge)}" alt="Agent-Ready badge 
 ${levelPanel(iia)}
 </div>
 </section>
+${league}
 ${layersList(report.layers)}
 <div class="band tables">
 ${lighthouseTable(lh)}
@@ -409,6 +412,11 @@ ${ladder(null)}
 <h2 class="sh">Weighted by maturity</h2>
 <ul class="weights">${weights}</ul>
 </div>
+</section>
+<section class="leaguecta" aria-labelledby="league-cta-h">
+<h2 id="league-cta-h" class="sh">Play for the top of the board</h2>
+<p>Scored a 62 and want a 90? Join the <a href="/league">Agent-Ready League</a>: every report shows the fixes worth the most points, every re-scan can win XP and achievements, and the leaderboard shows who is the most agent-ready on the web.</p>
+<p><a class="btn" href="/league">See the leaderboard</a></p>
 </section>
 <section class="term" aria-labelledby="agents-h">
 <h2 id="agents-h" class="sh">For agents and CI</h2>

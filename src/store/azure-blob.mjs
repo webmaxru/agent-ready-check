@@ -5,12 +5,16 @@
 //   r/<id>.json            the report (serialize(): bodies trimmed past ~1.8 MB)
 //   host/<host>.json       { id, at } pointer to the newest report for a host (badges)
 //   url/<sha256(url)>.json { id, at } pointer to the newest report for an exact URL (10-minute cache)
+// The League standings live in a second container (default "league") as board.json, one document written with
+// If-Match (optimistic concurrency). A separate container keeps them out of the 30-day lifecycle rule, which is
+// scoped to the "reports/" prefix in infra/main.bicep.
 // Retention: get() hides reports older than RETENTION_MS, and the storage account's lifecycle rule (infra/main.bicep)
 // deletes blobs 30 days after their last write, so nothing needs a cleanup job.
 //
 // Auth: Shared Key (the account key from the connection string, kept in an app setting, never in the repo).
 // https://learn.microsoft.com/en-us/rest/api/storageservices/authorize-with-shared-key
 import { RETENTION_MS, newId, hostOf, normHost, serialize, ID_RE } from './common.mjs';
+import { docLeague } from '../league/store.mjs';
 
 const API_VERSION = '2025-01-05';
 const enc = new TextEncoder();
@@ -76,16 +80,17 @@ export function stringToSign({ method, url, headers, account }) {
  * @param {object} o
  * @param {string} o.connectionString
  * @param {string} [o.container]
+ * @param {string} [o.leagueContainer]  container for the League standings (default "league")
  * @param {Function} [o.fetch]  injectable for tests
  */
-export function azureBlobStore({ connectionString, container = 'reports', retentionMs = RETENTION_MS, fetch: f = globalThis.fetch, now = () => Date.now() }) {
+export function azureBlobStore({ connectionString, container = 'reports', leagueContainer = 'league', retentionMs = RETENTION_MS, fetch: f = globalThis.fetch, now = () => Date.now() }) {
   const cfg = parseConnectionString(connectionString);
   let keyPromise = null;
   const signingKey = () => (keyPromise ||= globalThis.crypto.subtle.importKey('raw', b64ToBytes(cfg.key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']));
-  let containerReady = false;
+  const ready = new Set();
 
-  async function call(method, path, { body = null, headers = {}, query = '' } = {}) {
-    const url = `${cfg.blobEndpoint}/${container}${path}${query}`;
+  async function call(method, path, { body = null, headers = {}, query = '', container: box = container } = {}) {
+    const url = `${cfg.blobEndpoint}/${box}${path}${query}`;
     const bytes = body == null ? null : enc.encode(body);
     const h = { 'x-ms-date': new Date(now()).toUTCString(), 'x-ms-version': API_VERSION, ...headers };
     if (bytes) h['content-length'] = String(bytes.byteLength);
@@ -95,11 +100,11 @@ export function azureBlobStore({ connectionString, container = 'reports', retent
     return f(url, { method, headers: send, body: bytes });
   }
 
-  async function ensureContainer() {
-    if (containerReady) return;
-    const r = await call('PUT', '', { query: '?restype=container' });
+  async function ensureContainer(box = container) {
+    if (ready.has(box)) return;
+    const r = await call('PUT', '', { query: '?restype=container', container: box });
     if (r.status !== 201 && r.status !== 409) throw new Error(`Could not create the blob container (HTTP ${r.status}).`);
-    containerReady = true;
+    ready.add(box);
   }
 
   async function putJson(path, value) {
@@ -153,5 +158,24 @@ export function azureBlobStore({ connectionString, container = 'reports', retent
       return viaPointer(`/url/${await sha256Hex(url)}.json`, maxAgeMs);
     },
   };
+  // League standings: one document, ETag as the version tag. 412 (changed) and 409 (created meanwhile) mean "retry".
+  api.league = docLeague({
+    now,
+    load: async () => {
+      const r = await call('GET', '/board.json', { container: leagueContainer });
+      if (r.status === 404) return { doc: null, tag: null };
+      if (!r.ok) throw new Error(`Blob read failed (HTTP ${r.status}).`);
+      return { doc: await r.json(), tag: r.headers.get('etag') };
+    },
+    save: async (doc, tag) => {
+      const headers = { 'x-ms-blob-type': 'BlockBlob', 'content-type': 'application/json', ...(tag ? { 'if-match': tag } : { 'if-none-match': '*' }) };
+      const opts = { body: JSON.stringify(doc), headers, container: leagueContainer };
+      let r = await call('PUT', '/board.json', opts);
+      if (r.status === 404) { await ensureContainer(leagueContainer); r = await call('PUT', '/board.json', opts); }
+      if (r.status === 412 || r.status === 409) return false;
+      if (r.status !== 201) throw new Error(`Blob write failed (HTTP ${r.status}).`);
+      return true;
+    },
+  });
   return api;
 }

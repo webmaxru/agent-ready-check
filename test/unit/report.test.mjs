@@ -27,7 +27,7 @@ test('renderReportHtml escapes every site-controlled string', async () => {
   assert.ok(!out.includes('<img src=x'), 'no raw img from the site');
   assert.ok(out.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
   // only our own script tags: the module and the JSON-LD block
-  assert.deepEqual([...out.matchAll(/<script\b[^>]*>/g)].map((m) => m[0]).sort(), ['<script type="application/ld+json">', '<script type="module" src="/assets/app.js?v=2">'].sort());
+  assert.deepEqual([...out.matchAll(/<script\b[^>]*>/g)].map((m) => m[0]).sort(), ['<script type="application/ld+json">', '<script type="module" src="/assets/app.js?v=3">'].sort());
   const doc = parseDocument(out);
   const handlers = [...doc.querySelectorAll('*')].filter((el) => [...el.attributes].some((a) => /^on/i.test(a.name)));
   assert.equal(handlers.length, 0, 'no inline event handlers');
@@ -113,7 +113,7 @@ test('links and assets', () => {
   assert.equal(chapterLink(3), 'https://github.com/webmaxru/agent-ready-web-demos/tree/main/chapters/03-how-agents-see-a-page');
   assert.equal(chapterLink(1), 'https://github.com/webmaxru/agent-ready-web-demos');
   assert.equal(reportLinks('https://x.example/', 'a b').html, 'https://x.example/r/a%20b');
-  assert.deepEqual(Object.keys(ASSETS).sort(), ['/assets/app.css', '/assets/app.js', '/assets/favicon.svg', '/assets/fonts/silkscreen-400.woff2', '/assets/fonts/silkscreen-700.woff2']);
+  assert.deepEqual(Object.keys(ASSETS).sort(), ['/assets/app.css', '/assets/app.js', '/assets/favicon.svg', '/assets/fonts/silkscreen-400.woff2', '/assets/fonts/silkscreen-700.woff2', '/assets/league.js']);
   for (const f of ['/assets/fonts/silkscreen-400.woff2', '/assets/fonts/silkscreen-700.woff2']) {
     assert.equal(ASSETS[f].encoding, 'base64');
     assert.equal(Buffer.from(ASSETS[f].body, 'base64').subarray(0, 4).toString('latin1'), 'wOF2', `${f} is a woff2 file`);
