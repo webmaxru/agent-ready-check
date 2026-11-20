@@ -19,8 +19,8 @@ This page is the click-by-click setup. The architecture, the decisions and the c
 | 3 | First deploy, then make the runner image public | GitHub | 10 min (mostly waiting) | free |
 | 4 | Move the old site to repo.isainative.dev, then switch isainative.dev | Cloudflare and Azure | staged cutover + propagation | free |
 | 5 | Bind the domain | GitHub (Deploy infra workflow) | 5 min + certificate | free |
-| 6 | npm: account, first publish, trusted publisher | npmjs.com, a Codespace | 15 min | free (public package) |
-| 7 | Turn on npm publishing | GitHub | 1 min | free |
+| 6 | npm: account, bootstrap publish, trusted publisher (done 18 Nov 2026) | npmjs.com, a terminal | 15 min | free (public package) |
+| 7 | Turn on npm publishing (done 18 Nov 2026) | GitHub | 1 min | free |
 
 Then every release is: merge a PR that bumps the version, and publish a release (about 2 minutes of your time).
 
@@ -229,40 +229,41 @@ Sources: [Azure apex-domain setup](https://learn.microsoft.com/en-us/azure/stati
 
 ## Step 6. npm
 
-The package name **`agent-ready-check` is free** (the registry answered 404 for it on 5 November 2026, and for the look-alikes `agentreadycheck`, `agent_ready_check` and `agent.ready.check`, which npm would treat as too similar).
+**Done on 18 November 2026** for `webmaxru/agent-ready-check`: version 0.2.0 was published by the **Publish to npm** workflow through trusted publishing, with a provenance statement. The steps below record how, for a rebuild or a new package.
 
 ### 6a. Account
 
 1. Sign in at https://www.npmjs.com (or **Sign up**). Use the account that should own the package.
 2. Avatar > **Account** > **Two-Factor Authentication**: turn it on (an authenticator app or a security key).
 
-### 6b. First publish, once, by hand
+### 6b. Bootstrap publish, once, by hand
 
-npm's documentation describes the Trusted Publisher form only in an existing package's settings ([Trusted publishing](https://docs.npmjs.com/trusted-publishers)), and other projects document that the first version of a new package cannot be published through it. So version 0.2.0 is published once by hand, from a browser terminal, with nothing installed locally:
+A trusted publisher can only be added to a package that already exists ([npm trust](https://docs.npmjs.com/cli/v11/commands/npm-trust/): "Package must exist"). So the name is claimed once by hand with a placeholder version that contains only a README, and every real version comes from CI with provenance:
 
-1. On GitHub, open the repository > **Code** > **Codespaces** > **Create codespace on main** (free monthly hours cover this).
-2. In its terminal:
+1. In an empty folder, create a `package.json` with `"name": "agent-ready-check"`, `"version": "0.0.0"`, `"repository"` pointing at this repository, and a one-line README.
+2. With npm CLI 11.15 or later (`npx npm@11 ...` works):
 
    ```bash
-   git checkout v0.2.0
-   npm login            # opens a browser sign-in; approve it
-   npm publish --access public
+   npm login --registry https://registry.npmjs.org        # browser sign-in
+   npm publish --access public --registry https://registry.npmjs.org
    ```
 
-   npm asks for your 2FA code. This first version has no provenance statement (only CI can create one); every later version will.
-3. Delete the codespace (GitHub > Codespaces > ... > Delete).
+   Run it in an interactive terminal: npm opens a browser page for 2FA and fails with `EOTP` when it cannot prompt. For a new package npm first shows a public `0.0.0-stage` placeholder and answers "Your package is being processed"; the real version appears a few minutes later.
+3. After CI has published a real version, deprecate both placeholders: `npm deprecate agent-ready-check@0.0.0 "<message>"` and the same for `0.0.0-stage`.
 
 ### 6c. Add the trusted publisher
 
-1. https://www.npmjs.com/package/agent-ready-check > **Settings** > **Trusted Publisher** > **GitHub Actions**.
-2. Fill in:
-   - Organization or user: `webmaxru` (or the current owner if you did not transfer)
-   - Repository: `agent-ready-check`
-   - Workflow filename: `npm-publish.yml`
-   - Environment name: leave empty
-   - Allowed actions: allow `npm publish`
-3. Save. npm notes that a new trusted publisher must complete its first successful publish within 2 days or it expires; if that happens, delete it and add it again before the next release.
-4. Recommended, same page > **Publishing access** > **Require two-factor authentication and disallow tokens** > **Update Package Settings**. Trusted publishing keeps working; tokens stop working.
+From the same terminal:
+
+```bash
+npm trust github agent-ready-check --file npm-publish.yml --repository webmaxru/agent-ready-check --allow-publish --yes --registry https://registry.npmjs.org
+npm access set mfa=publish agent-ready-check --registry https://registry.npmjs.org   # require 2FA, disallow tokens
+npm logout --registry https://registry.npmjs.org
+```
+
+Or on the website: https://www.npmjs.com/package/agent-ready-check > **Settings** > **Trusted Publisher** > **GitHub Actions** with user `webmaxru`, repository `agent-ready-check`, workflow `npm-publish.yml`, no environment, and **allow `npm publish`** (configurations created after 3 September 2026 otherwise allow only `npm stage publish`). Then **Publishing access** > **Require two-factor authentication and disallow tokens**. Trusted publishing keeps working; tokens stop working.
+
+A new trusted publisher must complete its first successful publish within 2 days or it expires; if that happens, delete it and add it again before the next release.
 
 Requirements on npm's side (npm CLI 11.5.1 or later, Node 22.14 or later, a GitHub-hosted runner, a public repository for provenance) are met by the workflow.
 
@@ -270,7 +271,7 @@ Requirements on npm's side (npm CLI 11.5.1 or later, Node 22.14 or later, a GitH
 
 Repository > Settings > Secrets and variables > Actions > Variables > **New repository variable** `NPM_TRUSTED_PUBLISHING` = `true`.
 
-Until this variable is `true`, the **Publish to npm** workflow skips its job. That is why release v0.2.0, cut before this setup, did not try to publish.
+Until this variable is `true`, the **Publish to npm** workflow skips its job. That is why release v0.2.0, cut before this setup, did not try to publish; it was published afterwards with **Actions** > **Publish to npm** > **Run workflow** on the tag `v0.2.0` (`gh workflow run npm-publish.yml --ref v0.2.0`).
 
 ---
 
@@ -297,5 +298,6 @@ Nothing in this flow runs on your computer.
 | Runner rollout: image pull fails | Make the GHCR package public (step 3). |
 | Domain stuck in "Validating" | The CNAME is proxied (orange cloud) or missing. Set it to DNS only. |
 | npm publish: `E404` or `ENEEDAUTH` | The trusted publisher's user, repository or workflow file name does not match, or the npm CLI is older than 11.5.1. |
+| npm publish succeeded but the version is not on npm yet | npm answered "Your package is being processed"; it appears within a few minutes. |
 | npm publish: `E422` provenance mismatch | `repository.url` must match the repository; the workflow sets it, so check the trusted publisher points at the same repository. |
 | Browser checks fail on the first scan after a quiet period | The runner was scaled to zero and its cold start passed the 45-second API limit. Scan again; or set the runner's minimum replicas to 1 (about 31 USD/month, DEPLOY.md). |
