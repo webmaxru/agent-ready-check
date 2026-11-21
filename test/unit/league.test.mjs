@@ -22,6 +22,7 @@ const report = (host, score, at = T0, over = {}) => {
   const finalUrl = over.final_url || url;
   return fakeReport(url, {
     id: `r${Math.abs(hash(host + score + at))}`, score, scanned_at: new Date(at).toISOString(),
+    homepage_exchange_id: 'home',
     exchanges: { home: { request: { url }, response: { status: 200, finalUrl }, redirects: finalUrl === url ? [] : [{ url, location: finalUrl }] } },
     ...over,
   });
@@ -115,6 +116,26 @@ test('submission requires successful homepage evidence with an on-site redirect 
     ...valid,
     exchanges: { home: { request: { url: valid.url }, response: { status: 200, finalUrl: valid.final_url }, redirects: [{ url: valid.url, location: 'https://other.example/' }] } },
   }, T0), /redirected to a different site/);
+  assert.match(submissionProblem({
+    ...valid,
+    exchanges: {
+      comparison: { request: { url: valid.url }, response: { status: 200, finalUrl: valid.final_url } },
+      home: { request: { url: valid.url }, error: 'blocked', response: null },
+    },
+  }, T0), /homepage fetch did not complete/);
+  assert.equal(submissionProblem({
+    ...valid,
+    homepage_exchange_id: 'homepage',
+    exchanges: {
+      comparison: { request: { url: valid.url }, error: 'blocked' },
+      homepage: valid.exchanges.home,
+    },
+  }, T0), null);
+});
+
+test('snapshots retain the submitted homepage URL', () => {
+  const snap = snapshotOf({ ...report('www.example.com', 50), url: 'http://www.example.com/' });
+  assert.equal(snap.homepage_url, 'http://www.example.com/');
 });
 
 test('WebMCP achievement requires a successful browser scan', () => {
@@ -168,6 +189,13 @@ test('boards: ties share a rank, climbers need a gain, fresh limits to new playe
   assert.equal(rankBoard([old, a], 'fresh', T0).length, 1);
   assert.equal(rankBoard([old], 'top', T0 + 61 * DAY).length, 0);
   assert.equal(standing([old], 'old.example', T0 + 61 * DAY).active, false);
+  const entries = [a2, b, c, old];
+  for (const board of ['top', 'climbers', 'grinders', 'fresh']) {
+    const ranked = rankBoard(entries, board, T0 + 5 * DAY);
+    for (const entry of entries) {
+      assert.equal(standing(entries, entry.host, T0 + 5 * DAY).ranks[board], ranked.find((r) => r.host === entry.host)?.rank ?? null);
+    }
+  }
   assert.equal(projectedRank([a, b, c], 'new.example', 85, 0, T0).rank, 1);
   assert.equal(projectedRank([a, b, c], 'new.example', 70, 0, T0).rank, 3);
 });
@@ -281,6 +309,7 @@ test('rendering escapes host names and stays accessible', () => {
   const st = standing([evil], evil.host, T0);
   const prof = renderProfileHtml({ base: 'https://c.example', st, now: T0 });
   assert.ok(!prof.includes('<img src=x'));
+  assert.doesNotMatch(prof, /role="status"/);
   const imageWidth = Number(/league\/badge\/[^"]+" alt="[^"]+" width="(\d+)"/.exec(prof)[1]);
   const badgeWidth = Number(/width="(\d+)"/.exec(renderLeagueBadge({ rank: st.ranks.top, total: st.total, division: divisionOf(st.entry.score).id, score: st.entry.score }))[1]);
   assert.equal(imageWidth, badgeWidth);
@@ -326,6 +355,8 @@ test('routes: scan, join through the form, profile, boards, badge, markdown', as
   const scan = await (await json(app, '/api/scan', { url: 'https://example.com' })).json();
   const page = await (await app.request(`${B}/r/${scan.id}`, { headers: { accept: 'text/html' } })).text();
   assert.match(page, /Join the League/);
+  const filteredPage = await (await app.request(`${B}/r/${scan.id}?role=dev&status=pass`)).text();
+  assert.match(filteredPage, new RegExp(`href="/r/${scan.id}#check-`));
   const form = await app.request(`${B}/league/join`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://canonical.example' }, body: `report_id=${scan.id}` });
   assert.equal(form.status, 303);
   assert.equal(form.headers.get('location'), '/league/example.com?joined=1');
@@ -367,6 +398,66 @@ test('Markdown leaderboard route forwards the requested page', async () => {
   const md = await (await app.request(`${B}/league.md?page=2`)).text();
   assert.match(md, /\| 26 \| \[page26\.example\]/);
   assert.doesNotMatch(md, /\| 1 \| \[page1\.example\]/);
+  const html = await app.request(`${B}/league?board=grinders&page=2`, { headers: { accept: 'text/html' } });
+  assert.match(await html.text(), /href="\/league\.md\?board=grinders&amp;page=2"/);
+  assert.match(html.headers.get('link'), /\/league\.md\?board=grinders&page=2/);
+  assert.match(html.headers.get('link'), /\/api\/league\?board=grinders&page=2&limit=25/);
+});
+
+test('concurrent League reads share one in-flight board load', async () => {
+  const underlying = memoryLeague({ now: () => T0 });
+  let reads = 0; let finish;
+  const waiting = new Promise((resolve) => { finish = resolve; });
+  const league = { ...underlying, list: async () => { reads++; await waiting; return underlying.list(); } };
+  const { app } = makeApp({ league });
+  const requests = [
+    app.request(`${B}/api/league`),
+    app.request(`${B}/league`),
+    app.request(`${B}/league/example.com`),
+  ];
+  while (!reads) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reads, 1);
+  finish();
+  await Promise.all(requests);
+});
+
+test('League write failures return the same stable 503 from API and form joins', async () => {
+  const store = memoryStore({ now: () => T0 });
+  const id = await store.put(report('write-failure.example', 50));
+  const underlying = memoryLeague({ now: () => T0 });
+  const league = { ...underlying, submit: async () => { throw new Error('private storage detail'); } };
+  const { app } = makeApp({ store, league });
+  const api = await json(app, '/api/league', { report_id: id });
+  const message = 'The League is temporarily unavailable. Please try again shortly.';
+  assert.equal(api.status, 503);
+  assert.equal((await api.json()).detail, message);
+  const form = await app.request(`${B}/league/join`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', origin: B },
+    body: `report_id=${id}`,
+  });
+  assert.equal(form.status, 503);
+  const formText = await form.text();
+  assert.match(formText, new RegExp(message));
+  assert.doesNotMatch(formText, /private storage detail/);
+});
+
+test('join confirmation uses submission time and profile rescans use the submitted URL', async () => {
+  const store = memoryStore({ now: () => T0 });
+  const delayed = report('www.example.com', 60, T0 - 30 * 60_000);
+  delayed.url = 'http://www.example.com/';
+  delayed.final_url = delayed.url;
+  delayed.exchanges.home.request.url = delayed.url;
+  delayed.exchanges.home.response.finalUrl = delayed.final_url;
+  const id = await store.put(delayed);
+  const { app, advance } = makeApp({ store });
+  assert.equal((await json(app, '/api/league', { report_id: id })).status, 201);
+  const profile = await app.request(`${B}/league/example.com?joined=1`);
+  const html = await profile.text();
+  assert.match(html, /is on the board/);
+  assert.match(html, /href="\/scan\?url=http%3A%2F%2Fwww\.example\.com%2F">Re-scan and climb/);
+  advance(11 * 60_000);
+  assert.doesNotMatch(await (await app.request(`${B}/league/example.com?joined=1`)).text(), /is on the board/);
 });
 
 test('routes: API join by url, validation, cross-site form posts, moderation token', async () => {

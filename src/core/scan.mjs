@@ -66,6 +66,7 @@ export async function scan(input, o) {
     tool: { name: 'agent-ready-check', version: VERSION, catalog_checked: catalog.checked, checks: CHECKS.length },
     url: url.href,
     final_url: home.finalUrl,
+    homepage_exchange_id: home.id,
     scanned_at: new Date(started).toISOString(),
     duration_ms: Date.now() - started,
     mode: { runtime: o.runtime || 'node', browser: !!browserData, browser_error: browserData?.error || null },

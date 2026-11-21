@@ -22,7 +22,7 @@ export const PAGES = [
 
 const SIGNAL = 'Content-Signal: search=yes, ai-input=yes, ai-train=yes';
 // Paths that start scans or serve per-scan data: crawlers should not trigger scans by following links.
-const SCAN_PATHS = ['/scan', '/api/scan', '/r/', '/badge', '/league/join', '/api/league'];
+const SCAN_PATHS = ['/scan', '/api/scan', '/r/', '/badge', '/league/join$'];
 // Note: /league and /league/{host} stay crawlable. Only the submission endpoints are off limits.
 
 export function robotsTxt(base) {

@@ -118,9 +118,10 @@ export function submissionProblem(report, now = Date.now()) {
     if (asked.pathname !== '/' || asked.search) return 'Only a scan of the home page can join the League. Scan https://' + host + '/ and submit that report.';
     if (normalizeHost(asked.host) !== host) return 'That address redirects to a different site. Scan ' + host + ' directly and submit that report.';
     asked.hash = '';
-    const homepage = Object.values(report.exchanges || {}).find((ex) => {
-      try { return new URL(ex?.request?.url).href === asked.href; } catch { return false; }
-    });
+    const homepage = report.exchanges?.[report.homepage_exchange_id];
+    if (!homepage || new URL(homepage.request?.url).href !== asked.href) {
+      return 'The homepage fetch did not complete successfully. Scan the public home page again.';
+    }
     const response = homepage?.response;
     if (homepage?.error || !response || !Number.isInteger(response.status) || response.status < 200 || response.status >= 300) return 'The homepage fetch did not complete successfully. Scan the public home page again.';
     const sameSite = (value) => {
@@ -150,6 +151,7 @@ export function snapshotOf(report) {
   return {
     host: reportHost(report),
     report_id: report.id,
+    homepage_url: report.url,
     at: new Date(Date.parse(report.scanned_at)).toISOString(),
     score: Math.max(0, Math.min(100, Math.round(Number(report.score)))),
     level: report.compat?.isitagentready?.level ?? 0,
@@ -216,7 +218,7 @@ export function applySubmission(prev, snap, now = Date.now()) {
   Object.assign(e, {
     score: snap.score, level: snap.level, layers: snap.layers, report_id: snap.report_id, browser: snap.browser,
     best_score: Math.max(e.best_score, snap.score), best_level: Math.max(e.best_level, snap.level),
-    updated_at: snap.at, updated_at_report: snap.at,
+    homepage_url: snap.homepage_url, submitted_at: nowIso, updated_at: snap.at, updated_at_report: snap.at,
   });
   const last = e.history[e.history.length - 1];
   const sameDay = last && Date.parse(snap.at) - Date.parse(last.at) < 6 * 3_600_000;
@@ -314,10 +316,24 @@ export function standing(entries, host, now = Date.now()) {
   const h = normalizeHost(host);
   const entry = entries.find((e) => e.host === h) || null;
   if (!entry) return null;
-  const find = (b) => rankBoard(entries, b, now).find((r) => r.host === h)?.rank ?? null;
+  const active = entries.filter((e) => isActive(e, now));
+  const activeEntry = isActive(entry, now);
+  const topAhead = active.filter((e) => e.score > entry.score || (e.score === entry.score && e.level > entry.level)).length;
+  const grinderAhead = active.filter((e) => e.xp > entry.xp).length;
+  const freshActive = active.filter((e) => now - Date.parse(e.joined_at) <= FRESH_MS);
+  const freshAhead = freshActive.filter((e) => e.score > entry.score || (e.score === entry.score && e.level > entry.level)).length;
+  const entryGain = gainOf(entry, now);
+  const climberAhead = entryGain > 0
+    ? active.filter((e) => gainOf(e, now) > entryGain).length
+    : 0;
   return {
-    entry, active: isActive(entry, now), total: entries.filter((e) => isActive(e, now)).length,
-    ranks: { top: find('top'), climbers: find('climbers'), grinders: find('grinders'), fresh: find('fresh') },
+    entry, active: isActive(entry, now), total: active.length,
+    ranks: {
+      top: activeEntry ? topAhead + 1 : null,
+      climbers: activeEntry && entryGain > 0 ? climberAhead + 1 : null,
+      grinders: activeEntry ? grinderAhead + 1 : null,
+      fresh: freshActive.includes(entry) ? freshAhead + 1 : null,
+    },
     crowns: crownsOf(entries, now).filter((c) => c.host === h).map((c) => c.layer),
   };
 }

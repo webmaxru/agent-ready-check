@@ -19,7 +19,7 @@ import {
   BOARD_IDS, ACHIEVEMENT_BY_ID, applySubmission, snapshotOf, submissionProblem, rankBoard, rowOf, standing, crownsOf, projectedRank, quests,
   divisionOf, playerLevel, isActive, normalizeHost, reportHost,
 } from '../src/league/engine.mjs';
-import { leaguePanel, renderLeagueHtml, renderProfileHtml, renderLeagueMarkdown, renderProfileMarkdown, renderLeagueBadge } from '../src/league/render.mjs';
+import { leaguePanel, renderLeagueHtml, renderProfileHtml, renderLeagueMarkdown, renderProfileMarkdown, renderLeagueBadge, PER_PAGE } from '../src/league/render.mjs';
 
 export const DEFAULT_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'";
 
@@ -292,7 +292,7 @@ export function createApp(o) {
   // ---- Agent-Ready League (docs/LEAGUE.md): boards, profiles, joining, badges
   const league = o.league || store?.league || memoryLeague();
   const clock = o.now || (() => Date.now());
-  let leagueSnapshot = null; let leagueSnapshotAt = 0; let leagueGeneration = 0;
+  let leagueSnapshot = null; let leagueSnapshotAt = 0; let leagueGeneration = 0; let leagueLoad = null;
   const leagueSuppressionSnapshot = new Map();
   const joins = new Map(); // client -> recent join timestamps (per instance; joins are cheap, this only stops floods)
   const joinAllowed = (c) => {
@@ -302,14 +302,19 @@ export function createApp(o) {
     if (joins.size > 5000) joins.delete(joins.keys().next().value);
     return true;
   };
-  const invalidateLeagueSnapshot = () => { leagueGeneration++; leagueSnapshot = null; leagueSuppressionSnapshot.clear(); };
+  const invalidateLeagueSnapshot = () => { leagueGeneration++; leagueSnapshot = null; leagueLoad = null; leagueSuppressionSnapshot.clear(); };
   const leagueEntries = async () => {
     const now = clock();
     if (leagueSnapshot && now - leagueSnapshotAt < 5_000) return leagueSnapshot;
     const generation = leagueGeneration;
-    const entries = await league.list();
-    if (generation === leagueGeneration) { leagueSnapshot = entries; leagueSnapshotAt = clock(); leagueSuppressionSnapshot.clear(); }
-    return entries;
+    if (leagueLoad?.generation === generation) return leagueLoad.promise;
+    const load = { generation, promise: null };
+    load.promise = Promise.resolve().then(() => league.list()).then((entries) => {
+      if (generation === leagueGeneration) { leagueSnapshot = entries; leagueSnapshotAt = clock(); leagueSuppressionSnapshot.clear(); }
+      return entries;
+    }).finally(() => { if (leagueLoad === load) leagueLoad = null; });
+    leagueLoad = load;
+    return load.promise;
   };
   const leagueSuppressed = async (host) => {
     const entries = await leagueEntries();
@@ -366,7 +371,11 @@ export function createApp(o) {
     const why = submissionProblem(report, clock());
     if (why) throw new HttpError(422, why);
     const snap = snapshotOf(report);
-    const out = await league.submit(snap.host, (prev) => applySubmission(prev, snap, clock()));
+    let out;
+    try { out = await league.submit(snap.host, (prev) => applySubmission(prev, snap, clock())); } catch (e) {
+      console.error('League submission failed', e);
+      throw new HttpError(503, 'The League is temporarily unavailable. Please try again shortly.');
+    }
     if (out.error === 'stale') throw new HttpError(409, out.message);
     if (out.error === 'frequency') throw new HttpError(409, out.message);
     if (out.error === 'suppressed') throw new HttpError(403, out.message);
@@ -383,7 +392,7 @@ export function createApp(o) {
   app.get('/api/league', async (c) => {
     const board = c.req.query('board') || 'top';
     if (!BOARD_IDS.includes(board)) return problem(c, 400, `Unknown board "${board}". Boards: ${BOARD_IDS.join(', ')}.`);
-    const per = Math.max(1, Math.min(100, parseInt(c.req.query('limit'), 10) || 25)); const page = pageOf(c.req.query('page'));
+    const per = Math.max(1, Math.min(100, parseInt(c.req.query('limit'), 10) || PER_PAGE)); const page = pageOf(c.req.query('page'));
     const entries = await leagueEntries();
     const rows = rankBoard(entries, board, clock());
     return sendText(c, JSON.stringify({ board, boards: BOARD_IDS, ...leagueStats(entries), total: rows.length, page, per_page: per, rows: rows.slice((page - 1) * per, page * per).map((r) => ({ ...r, profile_url: `${baseOf(c)}/league/${encodeURIComponent(r.host)}` })) }), 'application/json', { 'cache-control': 'public, max-age=60', ...rlHeaders(c) });
@@ -537,11 +546,12 @@ export function createApp(o) {
     const board = boardOf(c.req.query('board')); const page = pageOf(c.req.query('page'));
     const entries = await leagueEntries();
     const rows = rankBoard(entries, board, clock());
-    return { board, page, entries, rows, stats: leagueStats(entries), crowns: crownsOf(entries, clock()) };
+    return { board, page: Math.min(page, Math.max(1, Math.ceil(rows.length / PER_PAGE))), entries, rows, stats: leagueStats(entries), crowns: crownsOf(entries, clock()) };
   };
   app.get('/league', async (c) => {
     const v = await leagueView(c); const base = baseOf(c);
-    return htmlOrMd(c, { html: () => renderLeagueHtml({ removalUrl: leagueRemovalUrl, base, board: v.board, rows: v.rows, page: v.page, stats: v.stats, crowns: v.crowns, now: clock(), browserAvailable }), md: () => renderLeagueMarkdown({ removalUrl: leagueRemovalUrl, base, board: v.board, rows: v.rows, page: v.page, stats: v.stats, crowns: v.crowns }), headers: { 'cache-control': 'public, max-age=60', link: '</league.md>; rel="alternate"; type="text/markdown", </api/league>; rel="alternate"; type="application/json"' } });
+    const query = `board=${v.board}&page=${v.page}`;
+    return htmlOrMd(c, { html: () => renderLeagueHtml({ removalUrl: leagueRemovalUrl, base, board: v.board, rows: v.rows, page: v.page, stats: v.stats, crowns: v.crowns, now: clock(), browserAvailable }), md: () => renderLeagueMarkdown({ removalUrl: leagueRemovalUrl, base, board: v.board, rows: v.rows, page: v.page, stats: v.stats, crowns: v.crowns }), headers: { 'cache-control': 'public, max-age=60', link: `</league.md?${query}>; rel="alternate"; type="text/markdown", </api/league?${query}&limit=${PER_PAGE}>; rel="alternate"; type="application/json"` } });
   });
   app.get('/league.md', async (c) => {
     const v = await leagueView(c);
@@ -600,7 +610,7 @@ export function createApp(o) {
     if (!st) return errorPage(c, 404, `${host} has not joined the League yet. Scan it, then press Join on the report page.`);
     const base = baseOf(c);
     if (md) return sendText(c, renderProfileMarkdown({ base, st, removalUrl: leagueRemovalUrl, now: clock() }), MD, { 'cache-control': 'public, max-age=60' });
-    const fresh = clock() - Date.parse(st.entry.updated_at) < 600_000;
+    const fresh = st.entry.submitted_at && clock() - Date.parse(st.entry.submitted_at) < 600_000;
     const banner = fresh ? (c.req.query('joined') ? 'joined' : c.req.query('updated') ? 'updated' : null) : null;
     const report = await store.get(st.entry.report_id).catch(() => null);
     return htmlOrMd(c, { html: () => renderProfileHtml({ removalUrl: leagueRemovalUrl, base, st, quests: report ? quests(report) : null, report, banner, now: clock() }), md: () => renderProfileMarkdown({ base, st, removalUrl: leagueRemovalUrl, now: clock() }), headers: { 'cache-control': banner ? 'no-store' : 'public, max-age=60', link: `</league/${encodeURIComponent(host)}?format=markdown>; rel="alternate"; type="text/markdown", </api/league/${encodeURIComponent(host)}>; rel="alternate"; type="application/json"` } });

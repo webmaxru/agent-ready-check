@@ -150,7 +150,7 @@ ${crownCards ? `<ul class="crowns">${crownCards}</ul>` : '<p class="empty">Crown
 </section>
 ${rulesHtml(removalUrl)}`;
   return shell({
-    base, path: '/league', title: 'Agent-Ready League', mdPath: '/league.md',
+    base, path: '/league', title: 'Agent-Ready League', mdPath: `/league.md?board=${b}&page=${pg}`,
     description: `The most agent-ready websites, ranked. ${stats.players} ${stats.players === 1 ? 'site has' : 'sites have'} joined. Scan yours, join, fix findings to climb, and win achievements.`,
     head: `<script type="module" src="/assets/league.js?v=${LEAGUE_ASSET_VERSION}"></script>\n`,
     body,
@@ -226,11 +226,13 @@ export function renderProfileHtml({ base, st, quests = null, banner = null, now 
   const layerRows = Object.entries(e.layers || {}).sort((x, y) => y[1] - x[1]).map(([id, s]) => `<li><span>${esc(layerName(id))}</span>${blocks(10, Math.round(s / 10), s >= 70 ? 'good' : s >= 40 ? 'mid' : 'bad')}<b>${esc(s)}</b></li>`).join('');
   const rankCell = (id, label) => `<li><span class="small">${esc(label)}</span><b>${st.ranks[id] ? `#${st.ranks[id]}` : '-'}</b></li>`;
   const streakNow = e.streak_week != null && weekOf(now) - e.streak_week <= 1 ? e.streak : 0;
-  const bannerHtml = banner ? `<section class="cele" data-celebrate role="status" aria-labelledby="cele-h"><h2 id="cele-h">${banner === 'joined' ? `${esc(host)} is on the board` : 'Standing updated'}</h2><p class="gainline"><span class="big">+<span data-count="${esc(e.last_gain || 0)}">${esc(e.last_gain || 0)}</span></span> XP</p>${eventLines(e.last_events || [])}</section>` : '';
-  const stale = !active ? `<p class="notice">This standing is dormant: no re-scan for ${DORMANT_MS / 86_400_000} days, so it is off the boards. <a href="/scan?url=${esc(encodeURIComponent(host))}">Scan again</a> to come back.</p>` : '';
+  const scanUrl = e.homepage_url || `https://${host}/`;
+  const rescan = `/scan?url=${esc(encodeURIComponent(scanUrl))}`;
+  const bannerHtml = banner ? `<section class="cele" data-celebrate aria-labelledby="cele-h"><h2 id="cele-h">${banner === 'joined' ? `${esc(host)} is on the board` : 'Standing updated'}</h2><p class="gainline"><span class="big">+<span data-count="${esc(e.last_gain || 0)}">${esc(e.last_gain || 0)}</span></span> XP</p>${eventLines(e.last_events || [])}</section>` : '';
+  const stale = !active ? `<p class="notice">This standing is dormant: no re-scan for ${DORMANT_MS / 86_400_000} days, so it is off the boards. <a href="${rescan}">Scan again</a> to come back.</p>` : '';
   const questBlock = quests
     ? `<section class="band" aria-labelledby="q-h"><h2 id="q-h" class="sh">Next quests</h2>${questsHtml(quests, { reportHref: `/r/${e.report_id}` })}</section>`
-    : `<section class="band" aria-labelledby="q-h"><h2 id="q-h" class="sh">Next quests</h2><p>The report behind this score has expired (reports are kept 30 days). <a href="/scan?url=${esc(encodeURIComponent(host))}">Scan again</a> to see the fixes worth the most points.</p></section>`;
+    : `<section class="band" aria-labelledby="q-h"><h2 id="q-h" class="sh">Next quests</h2><p>The report behind this score has expired (reports are kept 30 days). <a href="${rescan}">Scan again</a> to see the fixes worth the most points.</p></section>`;
   const body = `${bannerHtml}${stale}
 <section class="rhead" aria-labelledby="p-h">
 <div class="console profile">
@@ -246,7 +248,7 @@ ${crowns}
 <h2>Player level ${esc(pl.level)}</h2>
 <p class="xpline"><b data-count="${esc(e.xp)}">${fmt(e.xp)}</b> XP${blocks(20, Math.round(pl.pct / 5), 'xp')}<span class="small">${esc(pl.span - pl.into)} XP to level ${pl.level + 1}</span></p>
 <ul class="ranks" aria-label="Ranks">${rankCell('top', 'Top')}${rankCell('climbers', 'Climbers')}${rankCell('grinders', 'Grinders')}${rankCell('fresh', 'Fresh')}<li><span class="small">Streak</span><b>${streakNow > 1 ? `${esc(streakNow)}w` : '-'}</b></li></ul>
-<div class="actions"><a class="btn" href="/scan?url=${esc(encodeURIComponent(host))}">Re-scan and climb</a><a class="btn quiet" href="${esc(xShare)}" rel="noopener">Share on X</a></div>
+<div class="actions"><a class="btn" href="${rescan}">Re-scan and climb</a><a class="btn quiet" href="${esc(xShare)}" rel="noopener">Share on X</a></div>
 </div>
 </div>
 </section>
@@ -310,7 +312,7 @@ export function leaguePanel({ report, ctx }) {
 <h2 id="lp-h" class="sh">Agent-Ready League</h2>
 <div class="lp-grid">
 <div class="lp-main">${head}${action}${note}</div>
-<div class="lp-quests"><h3>Next quests</h3>${questsHtml(q, { reportHref: '' })}</div>
+<div class="lp-quests"><h3>Next quests</h3>${questsHtml(q, { reportHref: report.id ? `/r/${report.id}` : '' })}</div>
 </div>
 </section>`;
 }
