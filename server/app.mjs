@@ -293,6 +293,7 @@ export function createApp(o) {
   const league = o.league || store?.league || memoryLeague();
   const clock = o.now || (() => Date.now());
   let leagueSnapshot = null; let leagueSnapshotAt = 0; let leagueGeneration = 0;
+  const leagueSuppressionSnapshot = new Map();
   const joins = new Map(); // client -> recent join timestamps (per instance; joins are cheap, this only stops floods)
   const joinAllowed = (c) => {
     const k = clientKey(c); const t = clock(); const recent = (joins.get(k) || []).filter((x) => t - x < 3_600_000);
@@ -301,14 +302,22 @@ export function createApp(o) {
     if (joins.size > 5000) joins.delete(joins.keys().next().value);
     return true;
   };
-  const invalidateLeagueSnapshot = () => { leagueGeneration++; leagueSnapshot = null; };
+  const invalidateLeagueSnapshot = () => { leagueGeneration++; leagueSnapshot = null; leagueSuppressionSnapshot.clear(); };
   const leagueEntries = async () => {
     const now = clock();
     if (leagueSnapshot && now - leagueSnapshotAt < 5_000) return leagueSnapshot;
     const generation = leagueGeneration;
     const entries = await league.list();
-    if (generation === leagueGeneration) { leagueSnapshot = entries; leagueSnapshotAt = clock(); }
+    if (generation === leagueGeneration) { leagueSnapshot = entries; leagueSnapshotAt = clock(); leagueSuppressionSnapshot.clear(); }
     return entries;
+  };
+  const leagueSuppressed = async (host) => {
+    const entries = await leagueEntries();
+    const generation = leagueGeneration;
+    if (leagueSuppressionSnapshot.has(host)) return leagueSuppressionSnapshot.get(host);
+    const suppressed = await league.isSuppressed?.(host) || false;
+    if (generation === leagueGeneration && leagueSnapshot === entries) leagueSuppressionSnapshot.set(host, suppressed);
+    return suppressed;
   };
   const leagueStats = (entries) => {
     const act = entries.filter((e) => isActive(e, clock()));
@@ -333,10 +342,12 @@ export function createApp(o) {
   async function panelFor(report) {
     try {
       if (!report?.id) return '';
-      const joinProblem = submissionProblem(report, clock());
+      const reportProblem = submissionProblem(report, clock());
       const entries = await leagueEntries();
       const host = reportHost(report); const entry = entries.find((e) => e.host === host) || null;
-      const suppressed = await league.isSuppressed?.(host) || false;
+      const suppressed = await leagueSuppressed(host);
+      const standingProblem = entry && !reportProblem ? applySubmission(entry, snapshotOf(report), clock()) : null;
+      const joinProblem = reportProblem || (standingProblem?.error ? standingProblem.message : null);
       const st = entry ? standing(entries, host, clock()) : null;
       const at = Date.parse(report.scanned_at);
       const ctx = {
@@ -530,11 +541,11 @@ export function createApp(o) {
   };
   app.get('/league', async (c) => {
     const v = await leagueView(c); const base = baseOf(c);
-    return htmlOrMd(c, { html: () => renderLeagueHtml({ removalUrl: leagueRemovalUrl, base, board: v.board, rows: v.rows, page: v.page, stats: v.stats, crowns: v.crowns, now: clock(), browserAvailable }), md: () => renderLeagueMarkdown({ removalUrl: leagueRemovalUrl, base, board: v.board, rows: v.rows, stats: v.stats, crowns: v.crowns }), headers: { 'cache-control': 'public, max-age=60', link: '</league.md>; rel="alternate"; type="text/markdown", </api/league>; rel="alternate"; type="application/json"' } });
+    return htmlOrMd(c, { html: () => renderLeagueHtml({ removalUrl: leagueRemovalUrl, base, board: v.board, rows: v.rows, page: v.page, stats: v.stats, crowns: v.crowns, now: clock(), browserAvailable }), md: () => renderLeagueMarkdown({ removalUrl: leagueRemovalUrl, base, board: v.board, rows: v.rows, page: v.page, stats: v.stats, crowns: v.crowns }), headers: { 'cache-control': 'public, max-age=60', link: '</league.md>; rel="alternate"; type="text/markdown", </api/league>; rel="alternate"; type="application/json"' } });
   });
   app.get('/league.md', async (c) => {
     const v = await leagueView(c);
-    return sendText(c, renderLeagueMarkdown({ removalUrl: leagueRemovalUrl, base: baseOf(c), board: v.board, rows: v.rows, stats: v.stats, crowns: v.crowns }), MD, { 'cache-control': 'public, max-age=60' });
+    return sendText(c, renderLeagueMarkdown({ removalUrl: leagueRemovalUrl, base: baseOf(c), board: v.board, rows: v.rows, page: v.page, stats: v.stats, crowns: v.crowns }), MD, { 'cache-control': 'public, max-age=60' });
   });
   app.get('/league/join', (c) => c.redirect('/league', 302));
   app.post('/league/join', async (c) => {

@@ -14,7 +14,13 @@ let server; let base;
 test.beforeAll(async () => {
   let n = 0;
   const app = createApp({
-    scan: async (url) => fakeReport(url, { score: 40 + ((n++ * 17) % 55) }),
+    scan: async (url) => {
+      const asked = new URL(url).href;
+      return fakeReport(url, {
+        score: 40 + ((n++ * 17) % 55),
+        exchanges: { home: { request: { url: asked }, response: { status: 200, finalUrl: asked }, redirects: [] } },
+      });
+    },
     store: memoryStore(), rateLimit: memoryRateLimiter({ limit: 100, windowSeconds: 60 }), resolve: async () => ['93.184.216.34'], browserAvailable: false,
   });
   server = await serve(app, { port: 0, host: '127.0.0.1' });

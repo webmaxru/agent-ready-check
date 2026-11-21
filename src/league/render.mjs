@@ -315,7 +315,12 @@ export function leaguePanel({ report, ctx }) {
 </section>`;
 }
 
-function badgeW(st) { return Math.max(150, 60 + `#${st.ranks.top ?? '-'} · ${divisionOf(st.entry.score).name}`.length * 7 + 60); }
+function badgeW(st) {
+  const badge = st.active && st.ranks.top
+    ? renderLeagueBadge({ rank: st.ranks.top, total: st.total, division: divisionOf(st.entry.score).id, score: st.entry.score })
+    : renderLeagueBadge({});
+  return Number(/width="(\d+)"/.exec(badge)[1]);
+}
 
 // ---- badge ---------------------------------------------------------------------------------------------------------
 
@@ -339,14 +344,21 @@ export function renderLeagueBadge({ rank = null, total = null, division = null, 
 
 const mdc = (s) => String(s ?? '').replace(/([\\`*_[\]<>|#])/g, '\\$1');
 
-export function renderLeagueMarkdown({ base, board = 'top', rows, stats, crowns = [], removalUrl = DEFAULT_REMOVAL_URL }) {
+export function renderLeagueMarkdown({ base, board = 'top', rows, page = 1, stats, crowns = [], removalUrl = DEFAULT_REMOVAL_URL }) {
   const b = String(base || '').replace(/\/+$/, '');
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const pg = Math.min(Math.max(1, page), pages);
+  const shown = rows.slice((pg - 1) * PER_PAGE, pg * PER_PAGE);
   const L = [`# Agent-Ready League`, '', `The most agent-ready websites, ranked. ${stats.players} ${stats.players === 1 ? 'site has' : 'sites have'} joined (average score ${stats.players ? stats.average : 'n/a'}).`, '',
     `Boards: ${BOARD_IDS.map((id) => (id === board ? `**${BOARDS[id].name}**` : `[${BOARDS[id].name}](${b}/league.md?board=${id})`)).join(' | ')}. ${BOARDS[board].blurb}`, ''];
   if (rows.length) {
     L.push('| Rank | Site | Division | Score | Gain 30d | Level | XP | Streak | Achievements |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
-    for (const r of rows.slice(0, 100)) L.push(`| ${r.rank} | [${mdc(r.host)}](${b}${hostUrl(r.host)}?format=markdown) | ${divisionOf(r.score).name} | ${r.score} | ${r.gain > 0 ? `+${r.gain}` : r.gain} | L${r.level} | ${r.xp} | ${r.streak}w | ${r.achievements}/${ACHIEVEMENTS.length} |`);
+    for (const r of shown) L.push(`| ${r.rank} | [${mdc(r.host)}](${b}${hostUrl(r.host)}?format=markdown) | ${divisionOf(r.score).name} | ${r.score} | ${r.gain > 0 ? `+${r.gain}` : r.gain} | L${r.level} | ${r.xp} | ${r.streak}w | ${r.achievements}/${ACHIEVEMENTS.length} |`);
   } else L.push('Nobody is on this board yet.');
+  if (pages > 1) {
+    const link = (n, label) => `[${label}](${b}/league.md?${board === 'top' ? '' : `board=${board}&`}page=${n})`;
+    L.push('', `Page ${pg} of ${pages}${pg > 1 ? ` · ${link(pg - 1, 'Previous')}` : ''}${pg < pages ? ` · ${link(pg + 1, 'Next')}` : ''}`);
+  }
   if (crowns.length) L.push('', '## Layer crowns', '', ...crowns.map((c) => `- ${layerName(c.layer)}: [${mdc(c.host)}](${b}${hostUrl(c.host)}?format=markdown), ${c.score}/100`));
   L.push('', '## Join', '', `Scan a site at ${b}/, then submit the stored report with \`POST ${b}/api/league {"report_id":"..."}\` or the Join button on the report page. XP: ${XP.join} for joining, ${XP.perPoint} per point above your best, ${XP.perLevel} per level above your best, plus streak bonuses and achievements. Data: \`GET ${b}/api/league\`.`, '', '## Community rankings', '', `Rankings are community-submitted: anyone can add a public site from a scan this service ran, so a listing does not mean the site's owner took part, checked it or agrees with it. To have a site removed, open an issue at ${removalUrl} with the host name.`, '');
   return L.join('\n');

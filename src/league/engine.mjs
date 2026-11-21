@@ -117,6 +117,25 @@ export function submissionProblem(report, now = Date.now()) {
     if (asked.username || asked.password) return 'URLs containing credentials cannot join the League. Scan the public home page directly.';
     if (asked.pathname !== '/' || asked.search) return 'Only a scan of the home page can join the League. Scan https://' + host + '/ and submit that report.';
     if (normalizeHost(asked.host) !== host) return 'That address redirects to a different site. Scan ' + host + ' directly and submit that report.';
+    asked.hash = '';
+    const homepage = Object.values(report.exchanges || {}).find((ex) => {
+      try { return new URL(ex?.request?.url).href === asked.href; } catch { return false; }
+    });
+    const response = homepage?.response;
+    if (homepage?.error || !response || !Number.isInteger(response.status) || response.status < 200 || response.status >= 300) return 'The homepage fetch did not complete successfully. Scan the public home page again.';
+    const sameSite = (value) => {
+      const u = new URL(value);
+      return ['http:', 'https:'].includes(u.protocol) && !u.username && !u.password && normalizeHost(u.host) === host;
+    };
+    const finalUrl = new URL(response.finalUrl);
+    if (!sameSite(response.finalUrl) || !sameSite(report.final_url) || new URL(report.final_url).href !== finalUrl.href) {
+      return 'The homepage fetch did not finish on the reported site. Scan ' + host + ' directly and submit that report.';
+    }
+    for (const hop of homepage.redirects || []) {
+      if (!sameSite(hop.url) || !sameSite(hop.location)) {
+        return 'The homepage fetch redirected to a different site. Scan ' + host + ' directly and submit that report.';
+      }
+    }
   } catch { return 'This report has no valid URL.'; }
   const at = Date.parse(report.scanned_at);
   if (!Number.isFinite(at)) return 'This report has no scan date.';

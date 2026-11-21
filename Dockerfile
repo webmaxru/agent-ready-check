@@ -7,7 +7,7 @@ ENV NODE_ENV=production \
     PORT=8080 \
     BROWSER=1 \
     REPORTS_DIR=/data \
-    TRUST_PROXY=1
+    TRUST_PROXY=0
 
 WORKDIR /app
 COPY package.json package-lock.json ./

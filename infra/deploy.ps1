@@ -32,6 +32,8 @@ param(
   [string]$Sku = 'Free',
   [string]$Subscription = '',
   [string]$RunnerImage = '',
+  [string]$LeagueAdminToken = $env:LEAGUE_ADMIN_TOKEN,
+  [string]$LeagueRemovalUrl = $env:LEAGUE_REMOVAL_URL,
   [switch]$NoBrowserRunner,
   [switch]$SkipOidc,
   [switch]$SetGitHubVariables,
@@ -164,6 +166,7 @@ function Invoke-Deploy([string]$Domain) {
   $json = Invoke-Az @('deployment', 'group', 'create', '-g', $ResourceGroup, '-n', $deployName, '-f', (Join-Path $InfraDir 'main.bicep'),
     '-p', "appName=$Name", "location=$Location", "swaLocation=$SwaLocation", "swaSku=$Sku", "customDomain=$Domain",
     "deployBrowserRunner=$runnerFlag", "runnerImage=$RunnerImage", "deployerPrincipalId=$spObjectId",
+    "leagueAdminToken=$LeagueAdminToken", "leagueRemovalUrl=$LeagueRemovalUrl",
     '--query', 'properties.outputs', '-o', 'json')
   return ($json | ConvertFrom-Json)
 }

@@ -32,7 +32,7 @@ export function fsLeague({ dir, now = () => Date.now() }) {
   });
   const locked = (fn) => async (...args) => {
     await mkdir(dir, { recursive: true });
-    const release = await lockfile.lock(dir, { retries: { retries: 60, minTimeout: 10, maxTimeout: 250 }, stale: 120_000, update: 30_000 });
+    const release = await lockfile.lock(dir, { lockfilePath: join(dir, '.league.lock'), retries: { retries: 60, minTimeout: 10, maxTimeout: 250 }, stale: 120_000, update: 30_000 });
     try { return await fn(...args); } finally { await release(); }
   };
   return { ...api, kind: 'fs', submit: locked(api.submit), remove: locked(api.remove), restore: locked(api.restore) };

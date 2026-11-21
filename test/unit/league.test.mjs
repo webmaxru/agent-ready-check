@@ -9,7 +9,7 @@ import { d1Store } from '../../src/store/d1.mjs';
 import { createApp } from '../../server/app.mjs';
 import { memoryStore } from '../../src/store/memory.mjs';
 import { memoryRateLimiter } from '../../server/ratelimit.mjs';
-import { renderLeagueHtml, renderProfileHtml } from '../../src/league/render.mjs';
+import { renderLeagueHtml, renderProfileHtml, renderLeagueBadge, renderLeagueMarkdown } from '../../src/league/render.mjs';
 import { LEAGUE_CSS } from '../../src/league/assets.mjs';
 import { fakeReport } from './server-fake-report.mjs';
 import { mkdtempSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
@@ -17,7 +17,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const T0 = Date.parse('2026-11-17T12:00:00Z');
-const report = (host, score, at = T0, over = {}) => fakeReport(`https://${host}/`, { id: `r${Math.abs(hash(host + score + at))}`, score, scanned_at: new Date(at).toISOString(), ...over });
+const report = (host, score, at = T0, over = {}) => {
+  const url = `https://${host}/`;
+  const finalUrl = over.final_url || url;
+  return fakeReport(url, {
+    id: `r${Math.abs(hash(host + score + at))}`, score, scanned_at: new Date(at).toISOString(),
+    exchanges: { home: { request: { url }, response: { status: 200, finalUrl }, redirects: finalUrl === url ? [] : [{ url, location: finalUrl }] } },
+    ...over,
+  });
+};
 const hash = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7);
 const submit = (prev, rep, now = T0) => applySubmission(prev, snapshotOf(rep), now);
 
@@ -84,7 +92,7 @@ test('one standing per site: www folds into the apex, only home pages, no redire
   const www = report('www.example.com', 50);
   assert.equal(snapshotOf(www).host, 'example.com');
   assert.equal(normalizeHost('www.www.example.com'), 'example.com');
-  const redirected = { ...report('a.example', 50), final_url: 'https://www.a.example/en/' };
+  const redirected = report('a.example', 50, T0, { final_url: 'https://www.a.example/en/' });
   assert.equal(submissionProblem(redirected, T0), null);
   assert.equal(snapshotOf(redirected).host, 'a.example');
   assert.match(submissionProblem({ ...report('a.example', 50), url: 'https://a.example/blog/post' }, T0), /home page/);
@@ -93,6 +101,20 @@ test('one standing per site: www folds into the apex, only home pages, no redire
   assert.match(submissionProblem(report('a.example:8080', 50), T0), /public domain/);
   assert.match(submissionProblem(report('a.example:80', 50), T0), /public domain/);
   assert.match(submissionProblem({ ...report('a.example', 50), url: 'https://a.example/?p=123' }, T0), /home page/);
+});
+
+test('submission requires successful homepage evidence with an on-site redirect trail', () => {
+  const valid = report('a.example', 50);
+  assert.equal(submissionProblem(valid, T0), null);
+  assert.match(submissionProblem({ ...valid, exchanges: {} }, T0), /homepage fetch/);
+  assert.match(submissionProblem({
+    ...valid,
+    exchanges: { home: { request: { url: valid.url }, response: null, error: 'blocked', redirects: [{ url: valid.url, location: 'https://other.example/' }] } },
+  }, T0), /homepage fetch did not complete/);
+  assert.match(submissionProblem({
+    ...valid,
+    exchanges: { home: { request: { url: valid.url }, response: { status: 200, finalUrl: valid.final_url }, redirects: [{ url: valid.url, location: 'https://other.example/' }] } },
+  }, T0), /redirected to a different site/);
 });
 
 test('WebMCP achievement requires a successful browser scan', () => {
@@ -229,6 +251,25 @@ test('filesystem League file is outside report IDs and read failures never initi
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('filesystem League lock is created inside its reports directory', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'league-lock-'));
+  let startedResolve; let releaseOperation;
+  const started = new Promise((resolve) => { startedResolve = resolve; });
+  const blocked = new Promise((resolve) => { releaseOperation = resolve; });
+  try {
+    const league = fsLeague({ dir, now: () => T0 });
+    const operation = league.submit('locked.example', async () => {
+      startedResolve();
+      await blocked;
+      return { changed: true, entry: { host: 'locked.example', xp: 0, updated_at: new Date(T0).toISOString() } };
+    });
+    await started;
+    assert.ok(readdirSync(dir).includes('.league.lock'));
+    releaseOperation();
+    await operation;
+  } finally { releaseOperation?.(); rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('rendering escapes host names and stays accessible', () => {
   const evil = submit(null, report('a.example', 70)).entry;
   evil.host = '<img src=x onerror=alert(1)>.example';
@@ -237,8 +278,20 @@ test('rendering escapes host names and stays accessible', () => {
   assert.ok(!html.includes('<img src=x'));
   assert.equal((html.match(/<main/g) || []).length, 1);
   assert.match(html, /<caption/);
-  const prof = renderProfileHtml({ base: 'https://c.example', st: standing([evil], evil.host, T0), now: T0 });
+  const st = standing([evil], evil.host, T0);
+  const prof = renderProfileHtml({ base: 'https://c.example', st, now: T0 });
   assert.ok(!prof.includes('<img src=x'));
+  const imageWidth = Number(/league\/badge\/[^"]+" alt="[^"]+" width="(\d+)"/.exec(prof)[1]);
+  const badgeWidth = Number(/width="(\d+)"/.exec(renderLeagueBadge({ rank: st.ranks.top, total: st.total, division: divisionOf(st.entry.score).id, score: st.entry.score }))[1]);
+  assert.equal(imageWidth, badgeWidth);
+});
+
+test('Markdown leaderboard paginates rows and links between pages', () => {
+  const rows = Array.from({ length: 30 }, (_, i) => ({ rank: i + 1, host: `site${i + 1}.example`, score: 90 - i, gain: 0, level: 1, xp: i, streak: 0, achievements: 0 }));
+  const md = renderLeagueMarkdown({ base: 'https://c.example', rows, page: 2, stats: { players: 30, average: 75 }, crowns: [] });
+  assert.match(md, /\| 26 \| \[site26\.example\]/);
+  assert.doesNotMatch(md, /\| 1 \| \[site1\.example\]/);
+  assert.match(md, /Page 2 of 2 · \[Previous\]\(https:\/\/c\.example\/league\.md\?page=1\)/);
 });
 
 test('League action and teaser XP colors override their dark-console defaults', () => {
@@ -253,7 +306,13 @@ function makeApp(o = {}) {
   let now = T0;
   const clock = () => now;
   const app = createApp({
-    scan: async (url) => fakeReport(url, { scanned_at: new Date(now).toISOString() }),
+    scan: async (url) => {
+      const asked = new URL(url).href;
+      return fakeReport(url, {
+        scanned_at: new Date(now).toISOString(),
+        exchanges: { home: { request: { url: asked }, response: { status: 200, finalUrl: asked }, redirects: [] } },
+      });
+    },
     store: memoryStore({ now: clock }), rateLimit: memoryRateLimiter({ limit: 100, windowSeconds: 600 }), resolve: async () => ['93.184.216.34'],
     browserAvailable: false, now: clock, ...o,
   });
@@ -298,6 +357,18 @@ test('routes: scan, join through the form, profile, boards, badge, markdown', as
   assert.match(await (await app.request(`${B}/r/${scan.id}`, { headers: { accept: 'text/html' } })).text(), /Open your profile/);
 });
 
+test('Markdown leaderboard route forwards the requested page', async () => {
+  const league = memoryLeague({ now: () => T0 });
+  for (let i = 1; i <= 30; i++) {
+    const snap = snapshotOf(report(`page${i}.example`, 100 - i));
+    await league.submit(snap.host, (prev) => applySubmission(prev, snap, T0));
+  }
+  const { app } = makeApp({ league });
+  const md = await (await app.request(`${B}/league.md?page=2`)).text();
+  assert.match(md, /\| 26 \| \[page26\.example\]/);
+  assert.doesNotMatch(md, /\| 1 \| \[page1\.example\]/);
+});
+
 test('routes: API join by url, validation, cross-site form posts, moderation token', async () => {
   const { app } = makeApp({ leagueAdminToken: 'secret' });
   const r = await json(app, '/api/league', { url: 'https://example.com' });
@@ -337,6 +408,44 @@ test('report panels keep quests and standings when submissions are ineligible or
   assert.match(removedPage, /was removed from the League/);
   assert.match(removedPage, /Next quests/);
   assert.doesNotMatch(removedPage, /action="\/league\/join"/);
+});
+
+test('report panel explains the standing frequency restriction', async () => {
+  const store = memoryStore({ now: () => T0 });
+  const { app, advance } = makeApp({ store });
+  const first = await store.put(report('frequency.example', 50));
+  assert.equal((await json(app, '/api/league', { report_id: first })).status, 201);
+  advance(60 * 60_000);
+  const recent = await store.put(report('frequency.example', 51, T0 + 60 * 60_000));
+  const page = await (await app.request(`${B}/r/${recent}`)).text();
+  assert.match(page, /once every six hours/);
+  assert.doesNotMatch(page, /action="\/league\/join"/);
+});
+
+test('suppression lookups share the standings snapshot lifetime and invalidate on moderation', async () => {
+  const store = memoryStore({ now: () => T0 });
+  const underlying = memoryLeague({ now: () => T0 });
+  let suppressionReads = 0;
+  const league = {
+    ...underlying,
+    isSuppressed: async (host) => { suppressionReads++; return underlying.isSuppressed(host); },
+  };
+  const token = 'moderation-test-token';
+  const { app, advance } = makeApp({ store, league, leagueAdminToken: token });
+  const id = await store.put(report('suppression.example', 50));
+  await app.request(`${B}/r/${id}`);
+  await app.request(`${B}/r/${id}`);
+  assert.equal(suppressionReads, 1);
+  advance(5_000);
+  await app.request(`${B}/r/${id}`);
+  assert.equal(suppressionReads, 2);
+  const auth = { authorization: ['Bearer', token].join(' ') };
+  assert.equal((await app.request(`${B}/api/league/suppression.example`, { method: 'DELETE', headers: auth })).status, 204);
+  assert.match(await (await app.request(`${B}/r/${id}`)).text(), /was removed from the League/);
+  assert.equal(suppressionReads, 3);
+  assert.equal((await app.request(`${B}/api/league/suppression.example/restore`, { method: 'POST', headers: auth })).status, 204);
+  await app.request(`${B}/r/${id}`);
+  assert.equal(suppressionReads, 4);
 });
 
 test('League read snapshots are reused briefly and invalidated by local mutations', async () => {
@@ -413,10 +522,10 @@ test('routes: reports older than 7 days are refused with 422', async () => {
 test('a standing cannot be updated more than once in six hours', async () => {
   const store = memoryStore({ now: () => T0 });
   const { app, advance } = makeApp({ store });
-  const firstId = await store.put(fakeReport('https://interval.example/', { scanned_at: new Date(T0).toISOString() }));
+  const firstId = await store.put(report('interval.example', 42));
   assert.equal((await json(app, '/api/league', { report_id: firstId })).status, 201);
   advance(5 * 3_600_000);
-  const nextId = await store.put(fakeReport('https://interval.example/', { scanned_at: new Date(T0 + 5 * 3_600_000).toISOString(), score: 60 }));
+  const nextId = await store.put(report('interval.example', 60, T0 + 5 * 3_600_000));
   const refused = await json(app, '/api/league', { report_id: nextId });
   assert.equal(refused.status, 409);
   assert.match((await refused.json()).detail, /once every six hours/);
@@ -536,12 +645,12 @@ test('azure league: board.json lives in its own container and is written with ET
 });
 
 test('d1 league: one row per host, compare-and-swap on version', async () => {
-  const rows = new Map(); let schemaRuns = 0; let submitRace = null; let restoreRace = false;
+  const rows = new Map(); let schemaRuns = 0; const schemaStatements = []; let submitRace = null; let restoreRace = false;
   let d1Now = T0;
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     async run() {
-      if (sql.startsWith('CREATE')) { schemaRuns++; return { success: true }; }
+      if (sql.startsWith('CREATE')) { schemaRuns++; schemaStatements.push(sql); return { success: true }; }
       if (sql.startsWith('INSERT INTO league')) {
         const current = rows.get(args[0]);
         if (sql.includes('ON CONFLICT(host)')) {
@@ -599,6 +708,8 @@ test('d1 league: one row per host, compare-and-swap on version', async () => {
   const lg = d1Store(db, { now: () => d1Now }).league;
   const snap = snapshotOf(report('d.example', 70));
   assert.equal((await lg.submit('d.example', (p) => applySubmission(p, snap, T0))).changed, true);
+  assert.ok(schemaStatements.some((sql) => sql.includes('league_retention') && sql.includes('(updated)')));
+  assert.ok(schemaStatements.some((sql) => sql.includes('league_active_xp') && sql.includes("$.xp")));
   const snap2 = snapshotOf(report('d.example', 75, T0 + DAY));
   d1Now = T0 + 8 * DAY;
   assert.equal((await lg.submit('d.example', (p) => applySubmission(p, snap2, T0 + DAY))).entry.score, 75);
@@ -650,10 +761,11 @@ test('concurrent submissions to every store lose no updates', async () => {
     assert.equal((await lg.list()).length, hosts.length);
     // the same site from two clients at once: exactly one of the two different reports is the latest and nothing is lost
     const [a, b] = [snapshotOf(report('site0.example', 60, T0 + DAY)), snapshotOf(report('site0.example', 70, T0 + 2 * DAY))];
-    await Promise.all([lg, other].map((store, i) => store.submit('site0.example', (p) => applySubmission(p, [a, b][i], T0 + 2 * DAY))));
+    const results = await Promise.all([lg, other].map((store, i) => store.submit('site0.example', (p) => applySubmission(p, [a, b][i], T0 + 2 * DAY))));
+    assert.ok(results.every((result) => result.changed || result.error === 'stale'));
     const e = await lg.get('site0.example');
     assert.equal(e.score, 70);
-    assert.equal(e.history.length, 3);
+    assert.equal(e.history.length, 1 + results.filter((result) => result.changed).length);
     assert.equal((await lg.list()).length, hosts.length);
   };
   await run(memoryLeague({ now: () => T0 }));
@@ -664,7 +776,15 @@ test('concurrent submissions to every store lose no updates', async () => {
 test('routes: www and apex are one standing, deep pages and redirects are refused, an older report cannot replace a newer one', async () => {
   const store = memoryStore({ now: () => T0 });
   const { app, advance } = makeApp({ store });
-  const put = (url, over = {}) => store.put(fakeReport(url, { scanned_at: new Date(T0).toISOString(), ...over }));
+  const put = (url, over = {}) => {
+    const finalUrl = new URL(over.final_url || url).href;
+    const asked = new URL(url).href;
+    return store.put(fakeReport(url, {
+      scanned_at: new Date(T0).toISOString(),
+      exchanges: { home: { request: { url: asked }, response: { status: 200, finalUrl }, redirects: finalUrl === asked ? [] : [{ url: asked, location: finalUrl }] } },
+      ...over,
+    }));
+  };
   const idWww = await put('https://www.canon.example/');
   const idApex = await put('https://canon.example/', { scanned_at: new Date(T0 + 6 * 3_600_000).toISOString(), score: 55 });
   assert.equal((await json(app, '/api/league', { report_id: idWww })).status, 201);

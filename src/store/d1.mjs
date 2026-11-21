@@ -10,6 +10,8 @@ const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS reports_url ON reports (url, created)',
   'CREATE TABLE IF NOT EXISTS rate (k TEXT PRIMARY KEY, start INTEGER NOT NULL, used INTEGER NOT NULL)',
   'CREATE TABLE IF NOT EXISTS league (host TEXT PRIMARY KEY, version INTEGER NOT NULL, updated INTEGER NOT NULL, body TEXT NOT NULL)',
+  "CREATE INDEX IF NOT EXISTS league_retention ON league (updated) WHERE json_extract(body, '$.tombstone') IS NULL",
+  "CREATE INDEX IF NOT EXISTS league_active_xp ON league (CAST(json_extract(body, '$.xp') AS REAL), host) WHERE json_extract(body, '$.tombstone') IS NULL",
 ];
 
 function schema(db) {
