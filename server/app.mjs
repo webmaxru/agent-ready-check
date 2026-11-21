@@ -197,12 +197,13 @@ export function createApp(o) {
     const key = `${url.href}${useBrowser ? '#browser' : ''}`;
     const base = baseOf(c);
     const withUrl = (r) => ({ ...r, report_url: r.id ? `${base}/r/${r.id}` : null });
+    const hasHomepageExchange = (report) => typeof report?.homepage_exchange_id === 'string' && report.homepage_exchange_id.length > 0;
 
     const hit = cache.get(key);
-    if (hit && Date.now() - hit.at < cacheMs && !hit.report.mode?.browser_error) return { report: withUrl(hit.report), cached: true };
+    if (hit && hasHomepageExchange(hit.report) && Date.now() - hit.at < cacheMs && !hit.report.mode?.browser_error) return { report: withUrl(hit.report), cached: true };
     if (store?.latestForUrl) {
       const prev = await store.latestForUrl(url.href, cacheMs).catch(() => null);
-      if (prev && !!prev.mode?.browser === useBrowser && !prev.mode?.browser_error) { cache.set(key, { report: prev, at: Date.parse(prev.scanned_at) || Date.now() }); return { report: withUrl(prev), cached: true }; }
+      if (prev && hasHomepageExchange(prev) && !!prev.mode?.browser === useBrowser && !prev.mode?.browser_error) { cache.set(key, { report: prev, at: Date.parse(prev.scanned_at) || Date.now() }); return { report: withUrl(prev), cached: true }; }
     }
     if (inflight.has(key)) return { report: withUrl(await inflight.get(key)), cached: true };
 

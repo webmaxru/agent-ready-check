@@ -93,6 +93,20 @@ test('POST /api/scan returns JSON with id, report_url and RateLimit headers; GET
   assert.equal((await stored.json()).id, j.id);
 });
 
+test('URL scans bypass cached legacy reports without homepage exchange IDs', async () => {
+  const store = memoryStore();
+  await store.put({ ...fakeReport('https://legacy.example/'), homepage_exchange_id: undefined });
+  const { app, calls } = makeApp({ store });
+
+  const response = await get(app, '/api/scan?url=https://legacy.example/');
+  const report = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-cache'), 'MISS');
+  assert.equal(calls.length, 1);
+  assert.ok(report.homepage_exchange_id);
+});
+
 test('formats: markdown and agent', async () => {
   const { app } = makeApp();
   const md = await post(app, '/api/scan', { url: 'https://example.com', format: 'markdown' });
