@@ -197,7 +197,11 @@ export function createApp(o) {
     const key = `${url.href}${useBrowser ? '#browser' : ''}`;
     const base = baseOf(c);
     const withUrl = (r) => ({ ...r, report_url: r.id ? `${base}/r/${r.id}` : null });
-    const hasHomepageExchange = (report) => typeof report?.homepage_exchange_id === 'string' && report.homepage_exchange_id.length > 0;
+    const hasHomepageExchange = (report) => {
+      const id = report?.homepage_exchange_id;
+      if (!(typeof id === 'string' && id.length > 0) && !(typeof id === 'number' && Number.isFinite(id))) return false;
+      return !!report?.exchanges?.[id];
+    };
 
     const hit = cache.get(key);
     if (hit && hasHomepageExchange(hit.report) && Date.now() - hit.at < cacheMs && !hit.report.mode?.browser_error) return { report: withUrl(hit.report), cached: true };

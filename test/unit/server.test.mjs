@@ -10,7 +10,7 @@ import { fakeReport } from './server-fake-report.mjs';
 function makeApp(o = {}) {
   const calls = [];
   const app = createApp({
-    scan: async (url, opts) => { calls.push({ url, opts }); if (o.scanError) throw o.scanError; return fakeReport(url); },
+    scan: async (url, opts) => { calls.push({ url, opts }); if (o.scanError) throw o.scanError; return o.scan ? o.scan(url, opts) : fakeReport(url); },
     store: o.store || memoryStore(),
     rateLimit: o.rateLimit || memoryRateLimiter({ limit: 3, windowSeconds: 600 }),
     resolve: o.resolve || (async () => ['93.184.216.34']),
@@ -105,6 +105,31 @@ test('URL scans bypass cached legacy reports without homepage exchange IDs', asy
   assert.equal(response.headers.get('x-cache'), 'MISS');
   assert.equal(calls.length, 1);
   assert.ok(report.homepage_exchange_id);
+});
+
+test('URL scans accept numeric homepage exchange IDs in memory and store caches', async () => {
+  const url = 'https://numeric.example/';
+  const numericReport = fakeReport(url, {
+    homepage_exchange_id: 1,
+    exchanges: { 1: { id: 1, request: { method: 'GET', url, headers: {} }, response: { status: 200, finalUrl: url }, redirects: [] } },
+  });
+
+  const memory = makeApp({ scan: async () => numericReport });
+  const first = await get(memory.app, '/api/scan?url=https://numeric.example/');
+  const second = await get(memory.app, '/api/scan?url=https://numeric.example/');
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get('x-cache'), 'MISS');
+  assert.equal(second.status, 200);
+  assert.equal(second.headers.get('x-cache'), 'HIT');
+  assert.equal(memory.calls.length, 1);
+
+  const store = memoryStore();
+  await store.put(numericReport);
+  const fromStore = makeApp({ store });
+  const stored = await get(fromStore.app, '/api/scan?url=https://numeric.example/');
+  assert.equal(stored.status, 200);
+  assert.equal(stored.headers.get('x-cache'), 'HIT');
+  assert.equal(fromStore.calls.length, 0);
 });
 
 test('formats: markdown and agent', async () => {
