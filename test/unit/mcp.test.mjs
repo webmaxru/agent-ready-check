@@ -56,7 +56,7 @@ test('tools/call scan_site returns text summary and structuredContent without ra
   assert.match(body.result.content[0].text, /r\/abc123def456/);
   assert.equal(body.result.structuredContent.score, 42);
   assert.equal(body.result.structuredContent.exchanges, undefined);
-  assert.equal(body.result.structuredContent.exchanges_omitted, 1);
+  assert.equal(body.result.structuredContent.exchanges_omitted, 2);
   for (const k of TOOLS[0].outputSchema.required) assert.ok(k in body.result.structuredContent, k);
 });
 
