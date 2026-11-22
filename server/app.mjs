@@ -372,6 +372,15 @@ export function createApp(o) {
     } catch { return ''; }
   }
 
+  const LEAGUE_UNAVAILABLE = 'The League is temporarily unavailable. Please try again shortly.';
+  // A missing report is a 404; a failed read is a retryable 503, so an outage never looks like an expired report.
+  async function storedReport(id) {
+    try { return await store.get(id); } catch (e) {
+      console.error('Report read for a League submission failed', e);
+      throw new HttpError(503, LEAGUE_UNAVAILABLE);
+    }
+  }
+
   async function joinReport(report) {
     const why = submissionProblem(report, clock());
     if (why) throw new HttpError(422, why);
@@ -379,7 +388,7 @@ export function createApp(o) {
     let out;
     try { out = await league.submit(snap.host, (prev) => applySubmission(prev, snap, clock())); } catch (e) {
       console.error('League submission failed', e);
-      throw new HttpError(503, 'The League is temporarily unavailable. Please try again shortly.');
+      throw new HttpError(503, LEAGUE_UNAVAILABLE);
     }
     if (out.error === 'stale') throw new HttpError(409, out.message);
     if (out.error === 'frequency') throw new HttpError(409, out.message);
@@ -421,7 +430,7 @@ export function createApp(o) {
       let report = null;
       if (body && typeof body.report_id === 'string') {
         if (!ID_RE.test(body.report_id)) throw new HttpError(400, 'report_id is not a valid report id.');
-        report = await store.get(body.report_id).catch(() => null);
+        report = await storedReport(body.report_id);
         if (!report) throw new HttpError(404, 'No stored report with that id (reports are kept 30 days). Scan the site again.');
       } else if (body && typeof body.url === 'string') {
         report = (await runScan(c, body.url, { browser: body.browser === true })).report;
@@ -575,7 +584,7 @@ export function createApp(o) {
     } catch { return errorPage(c, 400, 'The submission could not be read.'); }
     if (!ID_RE.test(id)) return errorPage(c, 400, 'Submit a report from its report page (the Join button).');
     try {
-      const report = await store.get(id).catch(() => null);
+      const report = await storedReport(id);
       if (!report) return errorPage(c, 404, 'That report does not exist or has expired. Scan the site again.');
       const out = await joinReport(report);
       return c.redirect(`/league/${encodeURIComponent(out.host)}?${out.created ? 'joined' : 'updated'}=1`, 303);
@@ -591,7 +600,7 @@ export function createApp(o) {
     return c.body(svg, 200, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'public, max-age=600' });
   });
   app.get('/league/:host', async (c) => {
-    const entries = await leagueEntries();
+    let entries = await leagueEntries();
     const raw = c.req.param('host'); const rawHost = normalizeHost(raw); const suffix = raw.endsWith('.md');
     const literal = entries.find((e) => e.host === rawHost);
     const aliasHost = suffix ? normalizeHost(raw.slice(0, -3)) : rawHost;
@@ -610,6 +619,15 @@ export function createApp(o) {
     } else {
       host = suffix ? aliasHost : rawHost;
       md = suffix;
+    }
+    // Right after a join another instance may still hold a snapshot from before the write: read this host directly.
+    if (!md && (c.req.query('joined') || c.req.query('updated'))) {
+      const live = await league.get(host).catch(() => null);
+      if (live) {
+        const swap = (list) => [...list.filter((e) => e.host !== live.host), live];
+        entries = swap(entries);
+        if (leagueSnapshot) leagueSnapshot = swap(leagueSnapshot);
+      }
     }
     const st = standing(entries, host, clock());
     if (!st) return errorPage(c, 404, `${host} has not joined the League yet. Scan it, then press Join on the report page.`);

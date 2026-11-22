@@ -37,7 +37,7 @@ One interface (`list`, `get`, `submit(host, fn)`, `remove`) over the same stores
 
 - Every score comes from a scan this service ran. A submission carries only a report id; the stored report is the evidence, and its scan time (not the submission time) decides freshness and ordering. An older report never replaces a newer one.
 - Anyone can submit a report for any public site, as anyone can scan any site. The board shows what a scan measured, not who owns the site. Because ranks are about public behaviour, this lets a fan or a competitor update a standing, but not change what the scan found.
-- Known limits: a site that serves the scanner different content cannot be detected; a site can lower its score on purpose, join, and then fix it to look like a climber (XP and the Climbers board are only paid for points above its own best, but the 30-day gain is not); many throwaway domains from many clients can crowd the lower ranks (the store keeps at most 5000 standings and drops the lowest XP first).
+- Known limits: a site that serves the scanner different content cannot be detected; a site can lower its score on purpose, join, and then fix it to look like a climber (XP and the Climbers board are only paid for points above its own best, but the 30-day gain is not); many throwaway domains from many clients can crowd the lower ranks (the store keeps at most 2000 standings and drops the lowest XP first).
 - Ranks are computed when the page is read, from the current standings, so they cannot go stale; dormant sites (60 days without a re-scan) leave the boards.
 
 ## Moderation and abuse
@@ -46,7 +46,7 @@ One interface (`list`, `get`, `submit(host, fn)`, `remove`) over the same stores
 - Ownership of the site is not verified: anyone can submit a report for any public domain, as with scanning. The board only shows what a scan measured, but a reader should not take a listing as the owner's endorsement.
 - Removal today: the pages tell owners to open an issue with the host name; a maintainer then removes the listing with the admin route. Removal leaves a tombstone, so a submission cannot add the host straight back (403); an admin lifts it on purpose with `POST /api/league/{host}/restore`. A durable owner-verified opt-out (a `/.well-known` file or robots-style rule the scanner reads) is the follow-up.
 - Where the removal link goes: `LEAGUE_REMOVAL_URL` (default `https://github.com/webmaxru/agent-ready-check/issues/new`, the repository's own issue form; `github.com/vibeprogrammer/agent-ready-check` redirects to it). A fork or a hosted instance should set its own tracker or contact form.
-- Set `LEAGUE_ADMIN_TOKEN` to enable `DELETE /api/league/{host}` and `POST /api/league/{host}/restore` (bearer token). Without the token both routes answer 404.
+- Set `LEAGUE_ADMIN_TOKEN` to enable `DELETE /api/league/{host}` and `POST /api/league/{host}/restore` (bearer token). Without the token both routes answer 404. On Azure, the deploy scripts and the Deploy infra workflow keep the deployed `LEAGUE_ADMIN_TOKEN` and `LEAGUE_REMOVAL_URL` when they are not supplied; clear them on purpose with `--clear-league-settings` (`deploy.sh`), `-ClearLeagueSettings` (`deploy.ps1`) or the workflow's `clear_league_settings` input.
 - Follow-ups worth doing: owner verification (a `/.well-known` file or meta tag) before a site may opt out or claim a name, and a self-service opt-out.
 
 ## Design notes

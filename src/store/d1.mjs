@@ -35,7 +35,7 @@ export function d1League(db, { now = () => Date.now() } = {}) {
     kind: 'd1',
     async list() {
       await schema(db);
-      const { results } = await db.prepare("SELECT body FROM league WHERE updated >= ? AND json_extract(body, '$.tombstone') IS NULL ORDER BY updated DESC LIMIT 5000").bind(now() - FORGET_MS).all();
+      const { results } = await db.prepare("SELECT body FROM league WHERE updated >= ? AND json_extract(body, '$.tombstone') IS NULL ORDER BY updated DESC LIMIT ?").bind(now() - FORGET_MS, MAX_ENTRIES).all();
       return (results || []).map(parse).filter((e) => e && !e.tombstone);
     },
     async get(host) {

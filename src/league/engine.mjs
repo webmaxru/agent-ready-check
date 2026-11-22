@@ -7,7 +7,7 @@
 //     re-scan streak. Gains are paid only above your own best, so dropping and re-climbing cannot be farmed.
 //   - Four boards: Top (score), Climbers (gain over 30 days), Grinders (XP), Fresh (joined in the last 14 days).
 //   - Standings expire after 60 days without a re-scan, which keeps the board honest and gives people a reason to return.
-import { LEVEL_NAMES } from '../core/score.mjs';
+import { LEVEL_NAMES, layerScores, overallScore } from '../core/score.mjs';
 
 export const DAY = 86_400_000;
 export const WEEK = 7 * DAY;
@@ -163,7 +163,12 @@ export function snapshotOf(report) {
   };
 }
 
-const point = (s) => ({ report_id: s.report_id, at: s.at, score: s.score, level: s.level });
+const point = (s) => ({ at: s.at, score: s.score, level: s.level });
+// Ranking history is the bulk of a standing, so its points are compact [epoch ms, score] pairs. Older documents used
+// { at, score } objects; both read the same.
+const rankPoint = (s) => [Date.parse(s.at), s.score];
+const rankAt = (p) => (Array.isArray(p) ? p[0] : Date.parse(p.at));
+const rankScore = (p) => (Array.isArray(p) ? p[1] : p.score);
 
 /**
  * Apply a snapshot to a standing (prev is null for a new player). Pure: returns { entry, changed, events, gained }
@@ -225,11 +230,11 @@ export function applySubmission(prev, snap, now = Date.now()) {
   if (last && sameDay && last.score === snap.score && last.level === snap.level) e.history[e.history.length - 1] = point(snap);
   else e.history.push(point(snap));
   if (e.history.length > HISTORY_MAX) e.history = e.history.slice(-HISTORY_MAX);
-  if (!e.rank_history.length || e.rank_history[e.rank_history.length - 1].score !== snap.score) e.rank_history.push(point(snap));
+  if (!e.rank_history.length || rankScore(e.rank_history[e.rank_history.length - 1]) !== snap.score) e.rank_history.push(rankPoint(snap));
   const cutoff = Date.parse(snap.at) - CLIMB_MS;
   let baseline = -1;
   for (let i = 0; i < e.rank_history.length; i++) {
-    if (Date.parse(e.rank_history[i].at) <= cutoff) baseline = i;
+    if (rankAt(e.rank_history[i]) <= cutoff) baseline = i;
     else break;
   }
   if (baseline > 0) e.rank_history = e.rank_history.slice(baseline);
@@ -260,8 +265,8 @@ export function gainOf(e, now = Date.now()) {
   if (!h.length) return 0;
   const start = now - CLIMB_MS;
   let base = h[0];
-  for (const p of h) { if (Date.parse(p.at) <= start) base = p; else break; }
-  return e.score - base.score;
+  for (const p of h) { if (rankAt(p) <= start) base = p; else break; }
+  return e.score - rankScore(base);
 }
 
 const cmpTop = (a, b) => (b.score - a.score) || (b.level - a.level) || (b.xp - a.xp) || a.host.localeCompare(b.host);
@@ -377,5 +382,9 @@ export function quests(report, { limit = 5 } = {}) {
   out.sort((a, b) => (b.gain - a.gain) || a.id.localeCompare(b.id));
   const top = out.slice(0, limit);
   const sum = top.slice(0, 3).reduce((s, q) => s + q.gain, 0);
-  return { raw: Math.round(base * 10) / 10, quests: top, fixable: out.length, top3_gain: Math.round(sum * 10) / 10, projected_score: Math.min(100, Math.round(base + sum)) };
+  // The projection runs the core scorer (with its per-layer rounding) on the report with the top three fixed together.
+  const picked = new Set(top.slice(0, 3).map((q) => q.id));
+  const fixed = checks.map((x) => (picked.has(x.id) ? { ...x, status: 'pass' } : x));
+  const projected = overallScore(layerScores(layers, fixed));
+  return { raw: Math.round(base * 10) / 10, quests: top, fixable: out.length, top3_gain: Math.round(sum * 10) / 10, projected_score: Math.min(100, projected) };
 }

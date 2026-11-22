@@ -9,7 +9,7 @@
 // Runtime-neutral: this file has no node: imports. The fs, Azure and D1 stores build on docLeague or follow its contract.
 import { normalizeHost, DAY } from './engine.mjs';
 
-export const MAX_ENTRIES = 5000;
+export const MAX_ENTRIES = 2000; // with the compact ranking history a worst-case board.json stays near 10 MiB
 export const FORGET_MS = 180 * DAY; // standings untouched for this long are deleted on the next write
 
 /** Drop long-dormant standings and, past the cap, the lowest-XP ones. Mutates and returns the entries map. */

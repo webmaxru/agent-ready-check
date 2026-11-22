@@ -29,6 +29,9 @@ export const LEAGUE_CSS = String.raw`
 .podium .step{width:100%;display:flex;justify-content:center;align-items:flex-start;padding-top:8px;background:var(--ink);border:var(--b) solid var(--ink);color:var(--ink)}
 .podium .step .n{font-family:var(--font-pixel);font-size:32px;line-height:1}
 .podium .p1 .step{height:128px;background:var(--olive)}
+.podium .p1{grid-column:2;grid-row:1}
+.podium .p2{grid-column:1;grid-row:1}
+.podium .p3{grid-column:3;grid-row:1}
 .podium .p2 .step{height:96px;background:var(--lavender)}
 .podium .p3 .step{height:72px;background:var(--orange);color:#fff}
 

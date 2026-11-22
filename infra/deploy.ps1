@@ -38,6 +38,7 @@ param(
   [string]$RunnerImage = '',
   [string]$LeagueAdminToken = $env:LEAGUE_ADMIN_TOKEN,
   [string]$LeagueRemovalUrl = $env:LEAGUE_REMOVAL_URL,
+  [switch]$ClearLeagueSettings,
   [switch]$NoBrowserRunner,
   [switch]$SkipOidc,
   [switch]$SetGitHubVariables,
@@ -189,6 +190,17 @@ if ($Runner -and -not $RunnerImage) {
       if ($r.StatusCode -eq 200) { $RunnerImage = $candidate }
     } catch { $RunnerImage = $PlaceholderImage }
     if ($RunnerImage -eq $PlaceholderImage) { Write-Info 'runner image not published yet (or not public); using a placeholder until the deploy workflow runs' }
+  }
+}
+
+# Empty League settings keep what is already deployed, so a redeploy without them does not disable moderation.
+if (-not $ClearLeagueSettings -and (-not $LeagueAdminToken -or -not $LeagueRemovalUrl)) {
+  $existing = $null
+  $settingsJson = Invoke-Az @('staticwebapp', 'appsettings', 'list', '-n', $Name, '-g', $ResourceGroup, '-o', 'json') -AllowFail
+  if ($settingsJson) { try { $existing = ($settingsJson | ConvertFrom-Json).properties } catch { $existing = $null } }
+  if ($existing) {
+    if (-not $LeagueAdminToken -and $existing.PSObject.Properties['LEAGUE_ADMIN_TOKEN']) { $LeagueAdminToken = [string]$existing.LEAGUE_ADMIN_TOKEN }
+    if (-not $LeagueRemovalUrl -and $existing.PSObject.Properties['LEAGUE_REMOVAL_URL']) { $LeagueRemovalUrl = [string]$existing.LEAGUE_REMOVAL_URL }
   }
 }
 

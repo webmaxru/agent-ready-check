@@ -22,3 +22,9 @@ test('RFC 9309 matching: specific group wins, longest rule wins, allow wins ties
   assert.equal(isAllowed(p, 'CCBot', '/').allowed, false);
   assert.equal(isAllowed(p, 'CCBot', '/').group, '*');
 });
+
+test('selective scans still include the homepage exchange in the evidence map', async () => {
+  const report = await mockSite({ '/': html('<h1>x</h1>'), '/robots.txt': text('User-agent: *\nAllow: /\n') }).scan({ only: ['crawl.robots-txt'] });
+  assert.ok(report.homepage_exchange_id != null);
+  assert.ok(report.exchanges[report.homepage_exchange_id], 'homepage_exchange_id resolves in exchanges');
+});

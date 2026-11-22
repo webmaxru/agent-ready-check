@@ -29,13 +29,14 @@
 #   --no-browser-runner        skip the runner; browser checks then show as "skipped"
 #   --skip-oidc                do not create the Entra app / federated credential / role assignment
 #   --set-github-variables     also write the repository variables with the GitHub CLI (gh, logged in)
-#   LEAGUE_ADMIN_TOKEN         environment variable for League moderation (optional)
-#   LEAGUE_REMOVAL_URL         environment variable for the owner removal link (optional)
+#   --clear-league-settings    clear deployed League settings when LEAGUE_* below are empty
+#   LEAGUE_ADMIN_TOKEN         environment variable for League moderation (optional; empty keeps the deployed value)
+#   LEAGUE_REMOVAL_URL         environment variable for the owner removal link (optional; empty keeps the deployed value)
 #   -y, --yes                  no confirmation prompt
 set -euo pipefail
 
 RG="rg-agent-ready-check"; LOCATION="westeurope"; SWA_LOCATION="westeurope"; NAME="agent-ready-check"; SKU="Free"
-SUBSCRIPTION=""; DOMAIN=""; REPO=""; OIDC_SUBJECT=""; RUNNER_IMAGE=""; RUNNER=1; OIDC=1; SET_VARS=0; YES=0
+SUBSCRIPTION=""; DOMAIN=""; REPO=""; OIDC_SUBJECT=""; RUNNER_IMAGE=""; RUNNER=1; OIDC=1; SET_VARS=0; YES=0; CLEAR_LEAGUE=0
 ENVIRONMENT="production"
 DOMAIN_VALIDATION_METHOD="cname-delegation"
 PLACEHOLDER_IMAGE="mcr.microsoft.com/k8se/quickstart:latest"
@@ -63,8 +64,9 @@ while [ $# -gt 0 ]; do
     --no-browser-runner) RUNNER=0; shift ;;
     --skip-oidc) OIDC=0; shift ;;
     --set-github-variables) SET_VARS=1; shift ;;
+    --clear-league-settings) CLEAR_LEAGUE=1; shift ;;
     -y|--yes) YES=1; shift ;;
-    -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
     *) die "unknown option $1" "./infra/deploy.sh --help" ;;
   esac
 done
@@ -156,11 +158,22 @@ if [ "$RUNNER" = 1 ] && [ -z "$RUNNER_IMAGE" ]; then
   else RUNNER_IMAGE="$PLACEHOLDER_IMAGE"; fi
 fi
 
+# Empty League settings keep what is already deployed, so a redeploy without them does not disable moderation.
+LEAGUE_ADMIN_TOKEN="${LEAGUE_ADMIN_TOKEN:-}"; LEAGUE_REMOVAL_URL="${LEAGUE_REMOVAL_URL:-}"
+if [ "$CLEAR_LEAGUE" != 1 ] && { [ -z "$LEAGUE_ADMIN_TOKEN" ] || [ -z "$LEAGUE_REMOVAL_URL" ]; }; then
+  existing="$(az staticwebapp appsettings list -n "$NAME" -g "$RG" -o json 2>/dev/null || true)"
+  league_setting() { printf '%s' "$existing" | python3 -c 'import json,sys
+try: print((json.load(sys.stdin).get("properties") or {}).get(sys.argv[1]) or "")
+except Exception: print("")' "$1"; }
+  if [ -z "$LEAGUE_ADMIN_TOKEN" ]; then LEAGUE_ADMIN_TOKEN="$(league_setting LEAGUE_ADMIN_TOKEN)"; fi
+  if [ -z "$LEAGUE_REMOVAL_URL" ]; then LEAGUE_REMOVAL_URL="$(league_setting LEAGUE_REMOVAL_URL)"; fi
+fi
+
 deploy() { # $1 = custom domain or empty
   az deployment group create -g "$RG" -n "agent-ready-check-$(date +%Y%m%d%H%M%S)" -f "$INFRA_DIR/main.bicep" \
     -p appName="$NAME" location="$LOCATION" swaLocation="$SWA_LOCATION" swaSku="$SKU" customDomain="$1" domainValidationMethod="$DOMAIN_VALIDATION_METHOD" \
        deployBrowserRunner="$([ "$RUNNER" = 1 ] && echo true || echo false)" runnerImage="$RUNNER_IMAGE" \
-       deployerPrincipalId="$SP_OBJECT_ID" leagueAdminToken="${LEAGUE_ADMIN_TOKEN:-}" leagueRemovalUrl="${LEAGUE_REMOVAL_URL:-}" \
+       deployerPrincipalId="$SP_OBJECT_ID" leagueAdminToken="$LEAGUE_ADMIN_TOKEN" leagueRemovalUrl="$LEAGUE_REMOVAL_URL" \
     --query properties.outputs -o json
 }
 

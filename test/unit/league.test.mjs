@@ -169,6 +169,24 @@ test('lifetime climb baseline and rolling ranking history survive chart compacti
   assert.equal(gainOf(aged, agedAt), 0);
 });
 
+test('a full board of worst-case standings stays bounded', () => {
+  const host = `${'sub'.repeat(20)}.example-company-website.com`;
+  const layers = Array.from({ length: 13 }, (_, i) => ({ id: `layer-${i}`, applicable: true, score: 77 }));
+  let e = null;
+  for (let scan = 0; scan < 400; scan++) {
+    const at = T0 + scan * (6 * 3_600_000 + 1000);
+    e = submit(e, report(host, 40 + (scan % 2), at, { layers, mode: { browser: true } }), at).entry;
+  }
+  assert.equal(e.history.length, 30);
+  assert.ok(e.rank_history.length > 100);
+  assert.ok(JSON.stringify(e).length * MAX_ENTRIES < 12 * 1024 * 1024);
+});
+
+test('gain reads legacy object ranking points', () => {
+  const e = { score: 70, rank_history: [{ at: new Date(T0 - 40 * DAY).toISOString(), score: 50 }, { at: new Date(T0 - 5 * DAY).toISOString(), score: 60 }] };
+  assert.equal(gainOf(e, T0), 20);
+});
+
 test('League activity and last-scan display use the report scan time', () => {
   const e = submit(null, report('scan-time.example', 50, T0), T0).entry;
   const later = submit(e, report('scan-time.example', 51, T0 + DAY), T0 + 8 * DAY).entry;
@@ -218,6 +236,18 @@ test('quests rank fixes by the score they would give', () => {
   assert.equal(q.quests[0].id, 'crawl.robots-txt');
   assert.ok(q.quests[0].gain > 0);
   assert.ok(q.projected_score >= 42);
+});
+
+test('quest projection matches the core scorer, rounding per layer', () => {
+  const check = (id, layer, status) => ({ id, layer, status, weight: 1, title: id });
+  const checks = [
+    check('a1', 'a', 'fail'), check('a2', 'a', 'fail'), check('a3', 'a', 'pass'),
+    check('b1', 'b', 'fail'), check('b2', 'b', 'fail'), check('b3', 'b', 'pass'),
+  ];
+  const layers = [{ id: 'a', weight: 1 }, { id: 'b', weight: 1 }];
+  const q = quests({ checks, layers, score: 33 });
+  // Fixing a1, a2 and b1 gives layer a 100 and layer b 66.67 -> 67: (100 + 67) / 2 = 83.5 -> 84.
+  assert.equal(q.projected_score, 84);
 });
 
 test('stores: memory and fs keep the same contract; prune forgets dormant standings', async () => {
@@ -313,6 +343,20 @@ test('rendering escapes host names and stays accessible', () => {
   const imageWidth = Number(/league\/badge\/[^"]+" alt="[^"]+" width="(\d+)"/.exec(prof)[1]);
   const badgeWidth = Number(/width="(\d+)"/.exec(renderLeagueBadge({ rank: st.ranks.top, total: st.total, division: divisionOf(st.entry.score).id, score: st.entry.score }))[1]);
   assert.equal(imageWidth, badgeWidth);
+});
+
+test('podium lists ranks 1, 2, 3 in DOM order; browser standings rescan in browser mode', () => {
+  const entries = [70, 90, 80].map((s, i) => submit(null, report(`p${i}.example`, s)).entry);
+  const rows = rankBoard(entries, 'top', T0);
+  const html = renderLeagueHtml({ base: 'https://c.example', board: 'top', rows, page: 1, stats: { players: 3, average: 80, top: 90, achievements: 0 }, crowns: [], now: T0 });
+  const podium = /<ol class="podium"[^>]*>([\s\S]*?)<\/ol>/.exec(html)[1];
+  assert.deepEqual([...podium.matchAll(/class="slot (p\d)"/g)].map((m) => m[1]), ['p1', 'p2', 'p3']);
+  assert.match(LEAGUE_CSS, /\.podium \.p1\{grid-column:2/);
+  const browserEntry = submit(null, report('b.example', 60, T0, { mode: { browser: true } })).entry;
+  const prof = renderProfileHtml({ base: 'https://c.example', st: standing([browserEntry], 'b.example', T0), now: T0 });
+  assert.match(prof, /href="\/scan\?url=[^"]+&amp;browser=true">Re-scan and climb/);
+  const plain = renderProfileHtml({ base: 'https://c.example', st: standing([entries[0]], 'p0.example', T0), now: T0 });
+  assert.doesNotMatch(plain, /browser=true/);
 });
 
 test('Markdown leaderboard paginates rows and links between pages', () => {
@@ -440,6 +484,35 @@ test('League write failures return the same stable 503 from API and form joins',
   const formText = await form.text();
   assert.match(formText, new RegExp(message));
   assert.doesNotMatch(formText, /private storage detail/);
+});
+
+test('report-store read failures return the League 503, missing reports stay 404', async () => {
+  const underlying = memoryStore({ now: () => T0 });
+  const store = { ...underlying, get: async () => { throw new Error('blob outage'); } };
+  const { app } = makeApp({ store });
+  const id = 'abcdefghijklmnopqrstuv';
+  const api = await json(app, '/api/league', { report_id: id });
+  assert.equal(api.status, 503);
+  assert.match((await api.json()).detail, /temporarily unavailable/);
+  const form = await app.request(`${B}/league/join`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', origin: B }, body: `report_id=${id}` });
+  assert.equal(form.status, 503);
+  const { app: ok } = makeApp();
+  assert.equal((await json(ok, '/api/league', { report_id: id })).status, 404);
+});
+
+test('the post-join profile reads the host fresh instead of a stale board snapshot', async () => {
+  const league = memoryLeague({ now: () => T0 });
+  const store = memoryStore({ now: () => T0 });
+  const { app } = makeApp({ league, store });
+  assert.equal((await app.request(`${B}/league`)).status, 200); // caches an empty board on this instance
+  const id = await store.put(report('fresh.example', 61));
+  const rep = await store.get(id);
+  const snap = snapshotOf(rep);
+  await league.submit(snap.host, (prev) => applySubmission(prev, snap, T0)); // written by another instance
+  assert.equal((await app.request(`${B}/league/fresh.example`)).status, 404);
+  const profile = await app.request(`${B}/league/fresh.example?joined=1`);
+  assert.equal(profile.status, 200);
+  assert.match(await profile.text(), /is on the board/);
 });
 
 test('join confirmation uses submission time and profile rescans use the submitted URL', async () => {
@@ -792,7 +865,7 @@ test('d1 league: one row per host, compare-and-swap on version', async () => {
     },
     async all() {
       return { results: [...rows.values()].filter((r) => r.updated >= args[0] && !JSON.parse(r.body).tombstone)
-        .sort((a, b) => b.updated - a.updated).slice(0, 5000).map((r) => ({ body: r.body })) };
+        .sort((a, b) => b.updated - a.updated).slice(0, args[1]).map((r) => ({ body: r.body })) };
     },
   });
   const db = { prepare: (sql) => stmt(sql), batch: async (l) => { const out = []; for (const x of l) out.push(await x.run()); return out; } };

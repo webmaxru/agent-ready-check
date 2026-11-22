@@ -63,7 +63,8 @@ function copyBlock(id, label, text) {
 function podium(rows) {
   if (rows.length < 3) return '';
   const slot = (r, cls) => `<li class="slot ${cls}"><a class="who" href="${hostUrl(r.host)}">${esc(r.host)}</a>${divisionChip(r.division)}<span class="pts">${esc(r.score)}</span><span class="step"><span class="n">${r.rank}</span></span></li>`;
-  return `<ol class="podium" aria-label="Top three">${slot(rows[1], 'p2')}${slot(rows[0], 'p1')}${slot(rows[2], 'p3')}</ol>`;
+  // DOM (and screen-reader) order is rank 1, 2, 3; the grid places 2 left, 1 centre, 3 right.
+  return `<ol class="podium" aria-label="Top three">${slot(rows[0], 'p1')}${slot(rows[1], 'p2')}${slot(rows[2], 'p3')}</ol>`;
 }
 
 function boardTable(rows, board, offset, now) {
@@ -227,7 +228,7 @@ export function renderProfileHtml({ base, st, quests = null, banner = null, now 
   const rankCell = (id, label) => `<li><span class="small">${esc(label)}</span><b>${st.ranks[id] ? `#${st.ranks[id]}` : '-'}</b></li>`;
   const streakNow = e.streak_week != null && weekOf(now) - e.streak_week <= 1 ? e.streak : 0;
   const scanUrl = e.homepage_url || `https://${host}/`;
-  const rescan = `/scan?url=${esc(encodeURIComponent(scanUrl))}`;
+  const rescan = `/scan?url=${esc(encodeURIComponent(scanUrl))}${e.browser === true ? '&amp;browser=true' : ''}`;
   const bannerHtml = banner ? `<section class="cele" data-celebrate aria-labelledby="cele-h"><h2 id="cele-h">${banner === 'joined' ? `${esc(host)} is on the board` : 'Standing updated'}</h2><p class="gainline"><span class="big">+<span data-count="${esc(e.last_gain || 0)}">${esc(e.last_gain || 0)}</span></span> XP</p>${eventLines(e.last_events || [])}</section>` : '';
   const stale = !active ? `<p class="notice">This standing is dormant: no re-scan for ${DORMANT_MS / 86_400_000} days, so it is off the boards. <a href="${rescan}">Scan again</a> to come back.</p>` : '';
   const questBlock = quests
