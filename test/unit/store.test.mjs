@@ -37,7 +37,7 @@ test('memory store', async () => {
 });
 
 test('fs store (temp dir), survives a new instance, reindex', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'arc-store-'));
+  const dir = await mkdtemp(join(tmpdir(), 'is-ai-native-store-'));
   try {
     const clock = { t: Date.now() };
     const s1 = fsStore({ dir, now: () => clock.t });

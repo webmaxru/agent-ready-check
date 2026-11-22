@@ -150,7 +150,7 @@ export default {
     },
     async run(ctx) {
       const base = await apiBase(ctx);
-      const url = new URL('agent-ready-check-unknown-route', base.url).href;
+      const url = new URL('is-ai-native-unknown-route', base.url).href;
       const ex = await ctx.fetch(url, { accept: 'application/json, application/problem+json;q=0.9', purpose: 'api error probe' });
       const details = { probe: url, base: base.source, status: ex.status, contentType: ex.contentType };
       if (ex.error) return warn(`The API error probe (${url}) failed: ${ex.error}.`, { evidence: [ex], details });
@@ -178,7 +178,7 @@ export default {
       const api = await apiSignals(ctx);
       const sample = await apiSample(ctx);
       const base = await apiBase(ctx);
-      const probe = await ctx.fetch(new URL('agent-ready-check-unknown-route', base.url).href, { accept: 'application/json, application/problem+json;q=0.9', purpose: 'api error probe' });
+      const probe = await ctx.fetch(new URL('is-ai-native-unknown-route', base.url).href, { accept: 'application/json, application/problem+json;q=0.9', purpose: 'api error probe' });
       const exs = [sample?.ex, probe, api.openapi?.ex].filter((e) => e && !e.error);
       const found = exs.map((e) => ({ e, r: parseRateLimit(e.headers) }));
       const std = found.find((f) => f.r.policy || f.r.limit);

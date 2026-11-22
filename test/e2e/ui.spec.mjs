@@ -58,7 +58,7 @@ test('collectBrowser reads tools, axe, a11y, hidden text, consent, clickables, C
   expect(d.ok, d.error).toBe(true);
   expect(d.finalUrl).toBe(`${fixture.base}/`);
   expect(d.chromium).toMatch(/^\d+\./);
-  expect(d.userAgent).toContain('AgentReadyCheck/');
+  expect(d.userAgent).toContain('IsAINative/');
   expect(d.axe.rules).toHaveLength(33);
   expect(d.axe.violations.map((v) => v.id)).toContain('button-name');
   expect(d.a11y.unnamed.map((u) => u.role)).toContain('button');

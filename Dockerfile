@@ -1,4 +1,4 @@
-# Agent-Ready Check: Node server + Chromium for the browser checks.
+# Is AI-Native: Node server + Chromium for the browser checks.
 # Base: the official Playwright image. Its tag must match the playwright-core version in package-lock.json
 # (1.64.1), so the bundled browsers are the ones playwright-core expects. Tag verified on mcr.microsoft.com on 2026-11-03.
 FROM mcr.microsoft.com/playwright:v1.64.1-noble

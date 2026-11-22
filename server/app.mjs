@@ -294,7 +294,7 @@ export function createApp(o) {
     return c.body(JSON.stringify({ ...r, report_url: `${baseOf(c)}/r/${r.id}` }), 200, { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600', ...rlHeaders(c) });
   });
   app.get('/api/health', (c) => c.json({ status: 'ok', version: SITE.version, runtime, browser: browserAvailable, checks: CHECKS.length, store: store?.kind || null }, 200, { 'cache-control': 'no-store', ...rlHeaders(c) }));
-  // ---- Agent-Ready League (docs/LEAGUE.md): boards, profiles, joining, badges
+  // ---- AI-Native League (docs/LEAGUE.md): boards, profiles, joining, badges
   const league = o.league || store?.league || memoryLeague();
   const clock = o.now || (() => Date.now());
   let leagueSnapshot = null; let leagueSnapshotAt = 0; let leagueGeneration = 0; let leagueLoad = null;
@@ -679,7 +679,7 @@ export function createApp(o) {
 
   const badge = async (c, host) => {
     const r = host ? await store.latestForHost(host).catch(() => null) : null;
-    const svg = R.renderBadge({ score: r ? r.score : null, level: r ? r.compat?.isitagentready?.level : null, label: 'agent-ready' });
+    const svg = R.renderBadge({ score: r ? r.score : null, level: r ? r.compat?.isitagentready?.level : null, label: 'ai-native' });
     return c.body(svg, 200, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'public, max-age=600' });
   };
   app.get('/badge/:file', (c) => {

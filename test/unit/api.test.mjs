@@ -23,7 +23,7 @@ const good = () => ({
   '/openapi.json': json(openapi),
   '/developers.md': text('# API'),
   '/api/v1/cabins': json([], RL),
-  '/api/v1/agent-ready-check-unknown-route': json({ type: `${O}/problems/not-found`, title: 'Not found', status: 404 }, { 'content-type': 'application/problem+json', ...RL }, 404),
+  '/api/v1/is-ai-native-unknown-route': json({ type: `${O}/problems/not-found`, title: 'Not found', status: 404 }, { 'content-type': 'application/problem+json', ...RL }, 404),
 });
 
 test('api.catalog passes on the Nordlys linkset and fails when missing', async () => {
@@ -64,17 +64,17 @@ test('api.openapi-agent-quality scores described vs bare operations', async () =
 
 test('api.problem-json: problem+json passes, HTML 404 fails, plain JSON warns', async () => {
   assert.equal((await mockSite(good()).run('api.problem-json')).status, 'pass');
-  const h = good(); h['/api/v1/agent-ready-check-unknown-route'] = { status: 404, headers: { 'content-type': 'text/html' }, body: '<h1>404</h1>' };
+  const h = good(); h['/api/v1/is-ai-native-unknown-route'] = { status: 404, headers: { 'content-type': 'text/html' }, body: '<h1>404</h1>' };
   assert.equal((await mockSite(h).run('api.problem-json')).status, 'fail');
-  const j = good(); j['/api/v1/agent-ready-check-unknown-route'] = json({ error: 'nope' }, {}, 404);
+  const j = good(); j['/api/v1/is-ai-native-unknown-route'] = json({ error: 'nope' }, {}, 404);
   assert.equal((await mockSite(j).run('api.problem-json')).status, 'warn');
 });
 
 test('api.ratelimit reads draft-11 fields; legacy X-RateLimit warns; none fails', async () => {
   assert.equal((await mockSite(good()).run('api.ratelimit')).status, 'pass');
-  const l = good(); l['/api/v1/cabins'] = json([], { 'x-ratelimit-limit': '60' }); l['/api/v1/agent-ready-check-unknown-route'] = json({}, {}, 404);
+  const l = good(); l['/api/v1/cabins'] = json([], { 'x-ratelimit-limit': '60' }); l['/api/v1/is-ai-native-unknown-route'] = json({}, {}, 404);
   assert.equal((await mockSite(l).run('api.ratelimit')).status, 'warn');
-  const n = good(); n['/api/v1/cabins'] = json([]); n['/api/v1/agent-ready-check-unknown-route'] = json({}, {}, 404);
+  const n = good(); n['/api/v1/cabins'] = json([]); n['/api/v1/is-ai-native-unknown-route'] = json({}, {}, 404);
   assert.equal((await mockSite(n).run('api.ratelimit')).status, 'fail');
   assert.deepEqual(parseRateLimit({ 'ratelimit-policy': '"x";w=60' }).problems.length, 1);
 });

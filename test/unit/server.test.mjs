@@ -47,7 +47,7 @@ test('home page: HTML with Link headers, Markdown on Accept, Vary: Accept, secur
   const md = await get(app, '/', { accept: 'text/markdown' });
   assert.match(md.headers.get('content-type'), /^text\/markdown/);
   assert.match(md.headers.get('vary'), /Accept/);
-  assert.match(await md.text(), /^# Agent-Ready Check/);
+  assert.match(await md.text(), /^# Is AI-Native/);
 });
 
 test('ETag and 304 on pages and agent files', async () => {
@@ -262,7 +262,7 @@ test('agent files: robots, sitemap, llms, openapi, catalog, cards, skills, ard, 
     '/sitemap.xml': /application\/xml/, '/llms.txt': /text\/plain/, '/llms-full.txt': /text\/plain/, '/openapi.json': /application\/openapi\+json/,
     '/.well-known/api-catalog': /application\/linkset\+json/, '/.well-known/mcp/server-card.json': /application\/json/, '/.well-known/mcp.json': /application\/json/,
     '/.well-known/mcp/server-cards.json': /application\/json/, '/mcp/server-card': /application\/mcp-server-card\+json/, '/.well-known/agent-skills/index.json': /application\/json/,
-    '/.well-known/agent-skills/agent-ready-check/SKILL.md': /text\/markdown/, '/.well-known/ard.json': /application\/json/, '/.well-known/security.txt': /text\/plain/, '/.well-known/gpc.json': /application\/json/,
+    '/.well-known/agent-skills/is-ai-native/SKILL.md': /text\/markdown/, '/.well-known/ard.json': /application\/json/, '/.well-known/security.txt': /text\/plain/, '/.well-known/gpc.json': /application\/json/,
   };
   for (const [p, re] of Object.entries(types)) {
     const r = await get(app, p);

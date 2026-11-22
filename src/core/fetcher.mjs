@@ -6,7 +6,7 @@
 import { isBlockedIP, isIPLiteral } from './net.mjs';
 
 export const VERSION = '0.2.0';
-export const DEFAULT_UA = `AgentReadyCheck/${VERSION} (+https://github.com/vibeprogrammer/agent-ready-check; agent-readiness checker)`;
+export const DEFAULT_UA = `IsAINative/${VERSION} (+https://github.com/vibeprogrammer/agent-ready-check; agent-readiness checker)`;
 
 export class FetchBlockedError extends Error {
   constructor(message, code = 'blocked') { super(message); this.code = code; }

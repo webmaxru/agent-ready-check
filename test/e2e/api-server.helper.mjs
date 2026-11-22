@@ -18,7 +18,7 @@ export async function freePort() {
 
 export async function startServer(env = {}) {
   const port = await freePort();
-  const dir = mkdtempSync(join(tmpdir(), 'arc-e2e-'));
+  const dir = mkdtempSync(join(tmpdir(), 'is-ai-native-e2e-'));
   const log = openSync(join(dir, 'server.log'), 'a');
   const child = spawn(process.execPath, ['server/node.mjs'], {
     cwd: ROOT, detached: true, stdio: ['ignore', log, log],

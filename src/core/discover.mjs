@@ -84,7 +84,7 @@ export function mcpSignals(ctx) {
 }
 
 const MCP_LEGACY_PROTOCOL = '2025-11-25';
-const CLIENT_INFO = { name: 'agent-ready-check', version: '0.2.0' };
+const CLIENT_INFO = { name: 'is-ai-native', version: '0.2.0' };
 /** The 2026-07-28 per-request envelope (book chapter 8: no handshake, _meta on every request). */
 export const mcpMeta = (v = MCP_PROTOCOL) => ({ 'io.modelcontextprotocol/protocolVersion': v, 'io.modelcontextprotocol/clientCapabilities': {}, 'io.modelcontextprotocol/clientInfo': CLIENT_INFO });
 
@@ -171,7 +171,7 @@ export function apiBase(ctx) {
  * @returns {Promise<{ex, msg, result, error}>}
  */
 export async function mcpRequest(ctx, endpoint, method, params = {}, { init = null } = {}) {
-  if (method === 'tools/call') throw new Error('agent-ready-check never calls tools');
+  if (method === 'tools/call') throw new Error('is-ai-native never calls tools');
   const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream' };
   let body;
   if (init?.era === 'legacy') {

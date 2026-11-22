@@ -45,7 +45,7 @@ test('a real scan of the service itself through POST /api/scan', async ({ reques
 test('the HTML report page renders in Chromium', async ({ page }) => {
   await page.goto(`${srv.base}/scan?url=${encodeURIComponent(`${srv.base}/docs`)}`, { timeout: 110_000 });
   await expect(page.locator('main h1')).toBeVisible();
-  await expect(page).toHaveTitle(/Agent-Ready Check/);
+  await expect(page).toHaveTitle(/Is AI-Native/);
 });
 
 test('errors are problem+json', async ({ request }) => {

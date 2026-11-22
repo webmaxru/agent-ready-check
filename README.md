@@ -1,4 +1,4 @@
-# Agent-Ready Check
+# Is AI-Native
 
 Check how ready a website is for AI agents. **113 checks in 13 layers**, from the accessibility tree and robots.txt to MCP, WebMCP, agent discovery, commerce, identity, security and privacy, with evidence, a fix and a fix prompt for every finding.
 
@@ -8,7 +8,7 @@ It is built on the book **"The Agent-Ready Web"** by Maxim Salnikov and its demo
 
 ## Compared with isitagentready.com
 
-| | isitagentready.com | Agent-Ready Check |
+| | isitagentready.com | Is AI-Native |
 | --- | --- | --- |
 | Checks | 23 in 5 categories | 113 in 13 layers |
 | isitagentready Level 0-5 | yes | yes, computed from the same 23 checks with Cloudflare's published rules |
@@ -26,7 +26,7 @@ It is built on the book **"The Agent-Ready Web"** by Maxim Salnikov and its demo
 
 Both scanners ran on the same 12 sites from the same machine: Cloudflare's through its public API (`POST https://isitagentready.com/api/scan`), ours with browser checks on. Script: `scripts/compare-iia.mjs`; raw results in [docs/comparison/](docs/comparison/).
 
-| Site | Cloudflare level | Our compat level | isitagentready checks agreeing | Agent-Ready score (ours, 0-100) | Lighthouse Agentic view (ours) |
+| Site | Cloudflare level | Our compat level | isitagentready checks agreeing | AI-Native score (ours, 0-100) | Lighthouse Agentic view (ours) |
 |---|---|---|---|---|---|
 | isitagentready.com | 4 | 4 | 23/23 | 76 | 0.67 |
 | developers.cloudflare.com | 4 | 4 | 23/23 | 87 | 1 |
@@ -43,7 +43,7 @@ Both scanners ran on the same 12 sites from the same machine: Cloudflare's throu
 
 The Level matches on 12 of 12 sites and 276 of 276 individual check results match. The first run disagreed on 8 results; three of our compat rules were aligned with what the live scanner does (a robots.txt `Sitemap` line must lead to a sitemap; ARD entries need `displayName`; an `Offer` on software is not a shop), and one difference was Cloudflare rate-limiting its own WebMCP check.
 
-## The Agent-Ready League
+## The AI-Native League
 
 Anyone can add a public site to a community-submitted leaderboard (listings are not verified by site owners; removal on request) at `/league`: divisions from Bronze to Diamond, four boards (top, climbers, grinders, fresh), XP, weekly streaks, 20 achievements and layer crowns. Every report page shows the next "quests", the fixes worth the most points. Join from a report page, or `POST /api/league` with `{"report_id": "..."}`. Read it with `GET /api/league` or the MCP tool `get_league`. Rules, storage and moderation: [docs/LEAGUE.md](docs/LEAGUE.md). `LEAGUE_ADMIN_TOKEN` enables removing (and restoring) a listing; `LEAGUE_REMOVAL_URL` sets where owners are sent to ask for removal.
 
@@ -77,7 +77,7 @@ OpenAPI 3.1 at `/openapi.json`, listed in the RFC 9727 catalog at `/.well-known/
 Stateless Streamable HTTP at `/mcp` (protocol 2026-07-28 with `server/discover`; the 2025-11-25 and 2025-06-18 handshakes also work). Tools: `scan_site`, `list_checks`, `explain_check`, `get_report`, `get_league`. Server card at `/mcp/server-card` and `/.well-known/mcp/server-card.json`. Browser origins other than the service's own are refused (403).
 
 ```json
-{ "mcpServers": { "agent-ready-check": { "type": "http", "url": "https://<host>/mcp" } } }
+{ "mcpServers": { "is-ai-native": { "type": "http", "url": "https://<host>/mcp" } } }
 ```
 
 ### WebMCP
@@ -98,10 +98,12 @@ npx agent-ready-check http://localhost:3000 --allow-private --fail-under 80 --le
 npx agent-ready-check https://example.com --only crawl.robots-txt,content.llms-txt
 ```
 
+The package keeps its npm name `agent-ready-check`; installed (`npm i -g agent-ready-check` or as a dev dependency), the command is `is-ai-native`.
+
 ### Badge
 
 ```markdown
-![Agent-Ready Check](https://<host>/badge/example.com.svg)
+![AI-Native score](https://<host>/badge/example.com.svg)
 ```
 
 Shows the latest stored report for the host; never starts a scan.
@@ -116,7 +118,7 @@ console.log(report.score, report.compat.isitagentready.level);
 
 ## The service is agent-ready itself
 
-robots.txt with named AI crawler groups, `Content-Signal` and `Agentmap`; sitemap with `lastmod`; llms.txt and llms-full.txt; Markdown negotiation with `Vary: Accept`; `Link` headers (`api-catalog`, `service-desc`, `service-doc`, `describedby`, `alternate`, `sitemap`, `ard`); OpenAPI; API catalog; MCP server and card; Agent Skills index with a sha256 digest (`/.well-known/agent-skills/index.json`, skill also in [skills/agent-ready-check/SKILL.md](skills/agent-ready-check/SKILL.md)); ARD manifest; WebMCP; security.txt; CSP, HSTS and nosniff.
+robots.txt with named AI crawler groups, `Content-Signal` and `Agentmap`; sitemap with `lastmod`; llms.txt and llms-full.txt; Markdown negotiation with `Vary: Accept`; `Link` headers (`api-catalog`, `service-desc`, `service-doc`, `describedby`, `alternate`, `sitemap`, `ard`); OpenAPI; API catalog; MCP server and card; Agent Skills index with a sha256 digest (`/.well-known/agent-skills/index.json`, skill also in [skills/is-ai-native/SKILL.md](skills/is-ai-native/SKILL.md)); ARD manifest; WebMCP; security.txt; CSP, HSTS and nosniff.
 
 It targets isitagentready **Level 4**. Level 5 would need Web Bot Auth or OAuth metadata, which an anonymous public scanner has no use for, so we do not fake them.
 
@@ -124,13 +126,13 @@ Its own scores are recorded in each release's notes and in the deploy workflow's
 
 ## Safe fetching
 
-Every hop goes through an SSRF guard: http/https only, ports 80/443, DNS resolved and every address checked against private, loopback, link-local, CGNAT, multicast, reserved and IPv6 ULA/mapped ranges; redirects followed by hand (max 5) with the guard on each hop; Node pins the connection to the checked address. Per request 10 s and a byte cap; per scan 120 requests, 8 at a time, 60 s. The user agent identifies itself (`AgentReadyCheck/<version>`), and crawl-type reads obey robots.txt for that token.
+Every hop goes through an SSRF guard: http/https only, ports 80/443, DNS resolved and every address checked against private, loopback, link-local, CGNAT, multicast, reserved and IPv6 ULA/mapped ranges; redirects followed by hand (max 5) with the guard on each hop; Node pins the connection to the checked address. Per request 10 s and a byte cap; per scan 120 requests, 8 at a time, 60 s. The user agent identifies itself (`IsAINative/<version>`), and crawl-type reads obey robots.txt for that token.
 
 ## Hosting
 
 - **Azure Static Web Apps + Azure Functions** (production): the site on the Free plan, the whole app as one managed function, reports in Blob Storage, an optional browser runner on Container Apps that scales to zero. About 0 USD a month at light use. One Cloud Shell run sets it up (`infra/deploy.sh` or `infra/deploy.ps1 -GitHubRepo <owner>/<repo> -CustomDomain <domain>`), then GitHub Actions deploys every push to `main` with OIDC. Architecture, decisions and costs: [DEPLOY.md](DEPLOY.md). Click-by-click setup: [docs/PUBLISHING.md](docs/PUBLISHING.md).
 - **Node 22+**: `npm ci && npm start` (port 8080; `BROWSER=1` for browser checks, `REPORTS_DIR=./reports` to keep reports).
-- **Docker**: `docker build -t agent-ready-check . && docker run -p 8080:8080 agent-ready-check` (Playwright base image, browser checks on).
+- **Docker**: `docker build -t is-ai-native . && docker run -p 8080:8080 is-ai-native` (Playwright base image, browser checks on).
 - **Browser runner** for hosts that cannot start a browser: `Dockerfile.runner`, or `RUNNER_TOKEN=... bash scripts/runner-start.sh` on any small Linux box. It serves `POST /collect` behind a bearer token, one browser job at a time.
 - **Cloudflare-style Worker + D1**: `npm run build:worker`, then publish `dist/worker/`; set `BROWSER_RUNNER_URL` and `RUNNER_TOKEN` to use a runner.
 

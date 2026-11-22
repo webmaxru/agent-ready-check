@@ -297,7 +297,7 @@ export default {
     why: 'Bot protection that challenges every non-browser client also stops the AI agents and assistants you want. Verified-bot and Web Bot Auth allow-lists let good agents through while still blocking scrapers (book chapter 15).',
     fix: {
       snippet: '# Allow verified bots / signed agents in your WAF or bot manager, e.g.\n# - allow requests with a valid Web Bot Auth Signature-Agent\n# - allow verified AI crawlers (OAI-SearchBot, Claude-SearchBot, ...) on public pages\n# - keep challenges on login, checkout and APIs that need them',
-      prompt: 'Find the bot-protection rule (WAF, CDN bot management or anti-bot script) that challenges or blocks this site\'s public pages for non-browser user agents. Exempt public, read-only pages for identified agents and verified bots (Web Bot Auth signatures or the vendors\' verified-bot lists), keep challenges on sensitive paths, then verify with curl -A "AgentReadyCheck" that the homepage returns 200 HTML.',
+      prompt: 'Find the bot-protection rule (WAF, CDN bot management or anti-bot script) that challenges or blocks this site\'s public pages for non-browser user agents. Exempt public, read-only pages for identified agents and verified bots (Web Bot Auth signatures or the vendors\' verified-bot lists), keep challenges on sensitive paths, then verify with curl -A "IsAINative" that the homepage returns 200 HTML.',
     },
     async run(ctx) {
       const [bot, browser] = await Promise.all([

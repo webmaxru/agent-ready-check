@@ -1,7 +1,7 @@
 // H4: CLI argument parsing, gates and table output (no network: main() is not run against a site).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseArgs, gates, table, main, USAGE } from '../../bin/agent-ready-check.mjs';
+import { parseArgs, gates, table, main, USAGE } from '../../bin/is-ai-native.mjs';
 import { fakeReport } from './server-fake-report.mjs';
 
 test('parseArgs: defaults and every option', () => {

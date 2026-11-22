@@ -119,10 +119,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: docker build -f Dockerfile.runner -t arc-runner:ci .
+      - run: docker build -f Dockerfile.runner -t is-ai-native-runner:ci .
       - name: Start the runner and collect example.com
         run: |
-          docker run -d --name runner -p 8080:8080 -e RUNNER_TOKEN=ci-token arc-runner:ci
+          docker run -d --name runner -p 8080:8080 -e RUNNER_TOKEN=ci-token is-ai-native-runner:ci
           for _ in $(seq 1 30); do if curl -fsS http://127.0.0.1:8080/health; then break; fi; sleep 2; done
           curl -fsS -X POST http://127.0.0.1:8080/collect -H 'authorization: Bearer ci-token' -H 'content-type: application/json' \
             -d '{"url":"https://example.com/"}' -o collect.json

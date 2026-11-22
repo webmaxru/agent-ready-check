@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Smoke-test a deployed Agent-Ready Check: the agent surfaces answer as the service promises.
+"""Smoke-test a deployed Is AI-Native: the agent surfaces answer as the service promises.
 
-    python3 infra/check_site.py https://agent-ready-check.example.com
+    python3 infra/check_site.py https://is-ai-native.example.com
 
 Standard library only (Python 3.9+). Exit code 1 when a check fails. Called by deploy.sh / deploy.ps1 after a deploy.
 """
@@ -12,7 +12,7 @@ import sys
 import urllib.error
 import urllib.request
 
-UA = "agent-ready-check-deploy-smoke/1.0"
+UA = "is-ai-native-deploy-smoke/1.0"
 
 
 def req(url, method="GET", headers=None, body=None, timeout=60):

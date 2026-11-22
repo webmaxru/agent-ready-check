@@ -8,7 +8,7 @@ import { parseLinkHeader } from './parse/link-header.mjs';
 export const HTML_ACCEPT = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
 export const JSON_ACCEPT = 'application/json, */*;q=0.5';
 export const BROWSER_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36';
-export const ROBOTS_TOKEN = 'AgentReadyCheck';
+export const ROBOTS_TOKEN = 'IsAINative';
 
 export class ScanContext {
   /**
@@ -119,8 +119,8 @@ export class ScanContext {
     return this.memo('soft404', async () => {
       const r = Math.random().toString(36).slice(2, 10);
       const [page, wellKnown] = await Promise.all([
-        this.fetch(`/agent-ready-check-${r}`, { accept: HTML_ACCEPT, purpose: 'soft-404 probe' }),
-        this.fetch(`/.well-known/agent-ready-check-${r}.json`, { accept: JSON_ACCEPT, purpose: 'soft-404 probe' }),
+        this.fetch(`/is-ai-native-${r}`, { accept: HTML_ACCEPT, purpose: 'soft-404 probe' }),
+        this.fetch(`/.well-known/is-ai-native-${r}.json`, { accept: JSON_ACCEPT, purpose: 'soft-404 probe' }),
       ]);
       return { soft404: page.status === 200 || wellKnown.status === 200, page, wellKnown };
     });

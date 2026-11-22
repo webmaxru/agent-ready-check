@@ -1,7 +1,7 @@
 // A small fixed report for server/MCP/CLI unit tests (H4). Shape follows the report contract in SPEC.md.
 export function fakeReport(url = 'https://example.com/', over = {}) {
   return {
-    tool: { name: 'agent-ready-check', version: '0.1.0', checks: 2 },
+    tool: { name: 'is-ai-native', version: '0.1.0', checks: 2 },
     url, final_url: url, homepage_exchange_id: 'home', scanned_at: new Date().toISOString(), duration_ms: 12,
     mode: { runtime: 'test', browser: false, browser_error: null }, requests: 3, score: 42,
     layers: [{ id: 'crawl', name: 'Crawler access', summary: 'robots', chapters: '4', weight: 2, applicable: true, score: 50, counts: { pass: 1, fail: 1 }, checks: ['crawl.robots-txt', 'crawl.sitemap'] }],

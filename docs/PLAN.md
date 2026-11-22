@@ -1,4 +1,4 @@
-# Agent-Ready Check: plan
+# Is AI-Native: plan
 
 Status: plan v1, 3 Nov 2026. Lead task f6f8cdf4. Repo: https://github.com/vibeprogrammer/agent-ready-check (public, MIT).
 Knowledge base: *The Agent-Ready Web* v1.0.0 by Maxim Salnikov (Appendix B status table, read 2 Nov 2026) and its demos
@@ -11,7 +11,8 @@ layer by layer, the way the book teaches it. 113 checks in 13 layers, against is
 Every one of Cloudflare's 23 checks and every one of Lighthouse's 7 Agentic Browsing audits has a matching check here,
 so the report can show both graders' views next to our own score.
 
-Product name (Maxim decides): **Agent-Ready Check**. Domain idea: `agent-ready-check.salnikov.no` (sits beside
+Product name (Maxim decides): **Agent-Ready Check** at plan time, since renamed **Is AI-Native** (served at `isainative.dev`;
+the GitHub repository and the npm package keep the name `agent-ready-check`). Domain idea at plan time: `agent-ready-check.salnikov.no` (sits beside
 `agent-ready-web.salnikov.no`); alternative `agentready.salnikov.no`. Nothing is bought or configured by Tab.
 
 ## 2. Architecture
@@ -262,7 +263,7 @@ Counts: 113 checks; 23/23 isitagentready checks mirrored; 7/7 Lighthouse Agentic
   when the site shows that capability (an API, an MCP card, shop signals, OAuth metadata); otherwise the layer shows
   "not applicable" plus advice. `api.actionable-interface` makes sure a site with forms but no machine interface is
   still penalised.
-- Overall Agent-Ready score = layer scores weighted by layer weight (perception 3; crawler, structured data, content,
+- Overall AI-Native score = layer scores weighted by layer weight (perception 3; crawler, structured data, content,
   security 2; APIs 1.5; the rest 1).
 - isitagentready-compatible Level 0–5: computed only from the 23 compat results with Cloudflare's published rules
   (L1 two of robots/sitemap/Link headers; L2 + AI rules and Content Signals; L3 + Markdown negotiation; L4 + one of
@@ -300,7 +301,7 @@ SSRF guard on every hop: http/https only, ports 80/443 (CLI can allow others), D
 against private, loopback, link-local, CGNAT, multicast, reserved and IPv6 ULA/mapped ranges; redirects followed by hand
 (max 5) with the guard re-run on each hop; Node pins the connection to the checked address (no DNS rebinding); the Worker
 resolves through DNS-over-HTTPS. Per request 10 s timeout and a byte cap (HTML 3 MB, other 1 MB); per scan max 120
-requests, 8 at a time, 60 s deadline. User-Agent `AgentReadyCheck/<v> (+<service>/about)`. The crawl part (sitemap
+requests, 8 at a time, 60 s deadline. User-Agent `IsAINative/<v> (+<service>/about)`. The crawl part (sitemap
 samples, llms.txt link checks) obeys robots.txt for our token; single user-requested fetches of the entered URL and
 well-known metadata behave like a user agent. Per-IP rate limit (10 scans / 10 min) and a 10-minute result cache per URL.
 

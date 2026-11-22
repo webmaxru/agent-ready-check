@@ -12,6 +12,7 @@
   "homepage": "https://github.com/vibeprogrammer/agent-ready-check#readme",
   "keywords": [
     "agent-ready",
+    "ai-native",
     "ai-agents",
     "mcp",
     "webmcp",
@@ -25,7 +26,7 @@
     "node": ">=22"
   },
   "bin": {
-    "agent-ready-check": "bin/agent-ready-check.mjs"
+    "is-ai-native": "bin/is-ai-native.mjs"
   },
   "exports": {
     ".": "./src/index.mjs",
@@ -47,7 +48,7 @@
     "test:fixtures": "node --test \"test/fixtures/**/*.test.mjs\"",
     "test:e2e": "playwright test",
     "build:worker": "node scripts/build-worker.mjs",
-    "scan": "node bin/agent-ready-check.mjs",
+    "scan": "node bin/is-ai-native.mjs",
     "build:azure": "node scripts/build-azure.mjs"
   },
   "dependencies": {

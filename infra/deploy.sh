@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Agent-Ready Check on Azure Static Web Apps: one-time setup (and safe re-runs).
+# Is AI-Native on Azure Static Web Apps: one-time setup (and safe re-runs).
 #
 # Creates or updates, in one resource group (infra/main.bicep):
 #   - the Static Web App (Free plan) that serves the site and runs the API as managed Azure Functions
@@ -19,13 +19,14 @@
 #   --oidc-subject SUBJECT     exact GitHub OIDC subject (default: discover with gh)
 #   --custom-domain HOST       bind this domain (only once its CNAME points at the app; the script checks)
 #   --domain-validation-method METHOD  cname-delegation (default) or dns-txt-token (prevalidated apex)
-#   --resource-group NAME      default rg-agent-ready-check
+#   --resource-group NAME      default rg-is-ai-native
 #   --location REGION          storage and runner region, default westeurope
 #   --swa-location REGION      Static Web App region (westeurope, eastus2, centralus, westus2, eastasia)
-#   --name NAME                app name prefix, default agent-ready-check
+#   --name NAME                app name prefix, default is-ai-native (a deployment made before the rename
+#                              to Is AI-Native: --resource-group rg-agent-ready-check --name agent-ready-check)
 #   --sku Free|Standard        Static Web Apps plan, default Free
 #   --subscription ID          subscription to use (default: the current one)
-#   --runner-image IMAGE       browser runner image (default ghcr.io/<owner>/agent-ready-check-runner:latest)
+#   --runner-image IMAGE       browser runner image (default ghcr.io/<owner>/is-ai-native-runner:latest)
 #   --no-browser-runner        skip the runner; browser checks then show as "skipped"
 #   --skip-oidc                do not create the Entra app / federated credential / role assignment
 #   --set-github-variables     also write the repository variables with the GitHub CLI (gh, logged in)
@@ -35,7 +36,7 @@
 #   -y, --yes                  no confirmation prompt
 set -euo pipefail
 
-RG="rg-agent-ready-check"; LOCATION="westeurope"; SWA_LOCATION="westeurope"; NAME="agent-ready-check"; SKU="Free"
+RG="rg-is-ai-native"; LOCATION="westeurope"; SWA_LOCATION="westeurope"; NAME="is-ai-native"; SKU="Free"
 SUBSCRIPTION=""; DOMAIN=""; REPO=""; OIDC_SUBJECT=""; RUNNER_IMAGE=""; RUNNER=1; OIDC=1; SET_VARS=0; YES=0; CLEAR_LEAGUE=0
 ENVIRONMENT="production"
 DOMAIN_VALIDATION_METHOD="cname-delegation"
@@ -144,13 +145,13 @@ if [ "$OIDC" = 1 ]; then
   else ok "federated credential for $SUBJECT exists"; fi
 fi
 
-# Runner image: the deploy workflow publishes ghcr.io/<owner>/agent-ready-check-runner. Until it has run once,
+# Runner image: the deploy workflow publishes ghcr.io/<owner>/is-ai-native-runner. Until it has run once,
 # a public placeholder keeps the Container App deployable; the workflow swaps in the real image.
 if [ "$RUNNER" = 1 ] && [ -z "$RUNNER_IMAGE" ]; then
   if [ -n "$OWNER_LC" ]; then
-    RUNNER_IMAGE="ghcr.io/$OWNER_LC/agent-ready-check-runner:latest"
-    tok="$(curl -fsS "https://ghcr.io/token?scope=repository:$OWNER_LC/agent-ready-check-runner:pull" 2>/dev/null | sed -n 's/.*"token":"\([^"]*\)".*/\1/p' || true)"
-    code="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $tok" -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json' "https://ghcr.io/v2/$OWNER_LC/agent-ready-check-runner/manifests/latest" || true)"
+    RUNNER_IMAGE="ghcr.io/$OWNER_LC/is-ai-native-runner:latest"
+    tok="$(curl -fsS "https://ghcr.io/token?scope=repository:$OWNER_LC/is-ai-native-runner:pull" 2>/dev/null | sed -n 's/.*"token":"\([^"]*\)".*/\1/p' || true)"
+    code="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $tok" -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json' "https://ghcr.io/v2/$OWNER_LC/is-ai-native-runner/manifests/latest" || true)"
     if [ "$code" != 200 ]; then
       info "runner image not published yet (or not public); using a placeholder until the deploy workflow runs"
       RUNNER_IMAGE="$PLACEHOLDER_IMAGE"
@@ -170,7 +171,7 @@ except Exception: print("")' "$1"; }
 fi
 
 deploy() { # $1 = custom domain or empty
-  az deployment group create -g "$RG" -n "agent-ready-check-$(date +%Y%m%d%H%M%S)" -f "$INFRA_DIR/main.bicep" \
+  az deployment group create -g "$RG" -n "is-ai-native-$(date +%Y%m%d%H%M%S)" -f "$INFRA_DIR/main.bicep" \
     -p appName="$NAME" location="$LOCATION" swaLocation="$SWA_LOCATION" swaSku="$SKU" customDomain="$1" domainValidationMethod="$DOMAIN_VALIDATION_METHOD" \
        deployBrowserRunner="$([ "$RUNNER" = 1 ] && echo true || echo false)" runnerImage="$RUNNER_IMAGE" \
        deployerPrincipalId="$SP_OBJECT_ID" leagueAdminToken="$LEAGUE_ADMIN_TOKEN" leagueRemovalUrl="$LEAGUE_REMOVAL_URL" \

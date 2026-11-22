@@ -1,4 +1,4 @@
-// The Agent-Ready League: rules (engine), stores and routes. No network.
+// The AI-Native League: rules (engine), stores and routes. No network.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applySubmission, snapshotOf, submissionProblem, rankBoard, standing, crownsOf, projectedRank, quests, divisionOf, playerLevel, gainOf, normalizeHost, DAY, WEEK, XP } from '../../src/league/engine.mjs';
@@ -733,11 +733,11 @@ test('literal .md hostnames resolve before Markdown aliases, with Accept negotia
   assert.match(literal.headers.get('vary'), /Accept/);
   const alias = await app.request(`${B}/league/example.com.md`, { headers: { accept: 'text/markdown' } });
   assert.match(alias.headers.get('content-type'), /text\/markdown/);
-  assert.match(await alias.text(), /# example\.com on the Agent-Ready League/);
+  assert.match(await alias.text(), /# example\.com on the AI-Native League/);
   const literalMd = await app.request(`${B}/league/example.com.md?format=markdown`);
-  assert.match(await literalMd.text(), /# example\.com\.md on the Agent-Ready League/);
+  assert.match(await literalMd.text(), /# example\.com\.md on the AI-Native League/);
   const alternate = await app.request(`${B}/league/example.com?format=markdown`);
-  assert.match(await alternate.text(), /# example\.com on the Agent-Ready League/);
+  assert.match(await alternate.text(), /# example\.com on the AI-Native League/);
   assert.match((await app.request(`${B}/league/example.com`)).headers.get('link'), /example\.com\?format=markdown/);
 
   await json(app, '/api/league', { url: 'https://literal-only.example.md/' });

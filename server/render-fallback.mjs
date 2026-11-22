@@ -8,7 +8,7 @@ const ORDER = { fail: 0, warn: 1, error: 2, pass: 3, info: 4, skipped: 5, neutra
 
 export function renderReportMarkdown(report, { reportId } = {}) {
   const iia = report.compat?.isitagentready;
-  const out = [`# Agent-Ready report: ${report.final_url || report.url}`, '',
+  const out = [`# Is AI-Native report: ${report.final_url || report.url}`, '',
     `- Score: **${report.score}/100**`,
     iia ? `- isitagentready-compatible level: **${iia.level} (${iia.level_name})**` : null,
     `- Scanned: ${report.scanned_at}, ${report.requests} requests, ${report.duration_ms} ms${report.mode?.browser ? ', with a browser' : ', without a browser'}`,
@@ -22,7 +22,7 @@ export function renderReportMarkdown(report, { reportId } = {}) {
 
 export function renderFixPrompts(report) {
   const todo = (report.checks || []).filter((c) => c.status === 'fail' || c.status === 'warn').sort((a, b) => (b.weight || 0) - (a.weight || 0));
-  const out = [`# Fixes for ${report.final_url || report.url}`, '', `Agent-Ready score ${report.score}/100. Work through these in order; verify each with the check id named.`, ''];
+  const out = [`# Fixes for ${report.final_url || report.url}`, '', `AI-Native score ${report.score}/100. Work through these in order; verify each with the check id named.`, ''];
   for (const c of todo) {
     out.push(`## ${c.id} (${c.status}): ${c.title}`, '', c.message, '');
     if (c.fix?.prompt) out.push(c.fix.prompt, '');
@@ -46,7 +46,7 @@ ${id ? `<p><a href="/api/reports/${esc(id)}">JSON</a></p>` : ''}`;
   return page({ base: baseUrl, path: id ? `/r/${id}` : '/scan', title: `Report for ${new URL(report.final_url || report.url).host}`, description: `Agent-readiness report for ${report.final_url || report.url}: ${report.score}/100.`, body, mdPath: id ? `/r/${id}` : null, noindex: true });
 }
 
-export function renderBadge({ score, level, label = 'agent-ready' } = {}) {
+export function renderBadge({ score, level, label = 'ai-native' } = {}) {
   const value = score == null ? 'not scanned' : `${score}/100${level != null ? ` · L${level}` : ''}`;
   const color = score == null ? '#9f9f9f' : score >= 80 ? '#2e7d32' : score >= 50 ? '#b26a00' : '#c62828';
   const w1 = 6 * label.length + 12; const w2 = 6.5 * value.length + 12; const w = Math.round(w1 + w2);

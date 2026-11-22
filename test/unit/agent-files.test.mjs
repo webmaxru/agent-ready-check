@@ -89,7 +89,7 @@ test('OpenAPI 3.1: every operation has operationId, summary, description, respon
 
 test('MCP server card has a flat name, version, remotes with our protocols and capabilities', () => {
   const c = files.serverCard(BASE);
-  assert.match(c.name, /^example\.checker\/agent-ready-check$/);
+  assert.match(c.name, /^example\.checker\/is-ai-native$/);
   assert.ok(c.version);
   assert.equal(c.remotes[0].url, `${BASE}/mcp`);
   assert.deepEqual(c.remotes[0].supportedProtocolVersions, files.MCP_PROTOCOLS);
@@ -104,7 +104,7 @@ test('Agent Skills index v0.2.0: digest is the sha256 of SKILL.md as served', as
   for (const k of ['name', 'type', 'description', 'url', 'digest']) assert.ok(s[k], k);
   const md = files.skillMd(BASE);
   assert.equal(s.digest, `sha256:${createHash('sha256').update(md).digest('hex')}`);
-  assert.match(md, /^---\nname: agent-ready-check\ndescription: /);
+  assert.match(md, /^---\nname: is-ai-native\ndescription: /);
   assert.ok(md.includes(`${BASE}/mcp`));
 });
 
@@ -133,6 +133,6 @@ test('pages Markdown: docs, checks, privacy, home', () => {
   const checks = files.checksMd(BASE);
   assert.ok((checks.match(/^- `/gm) || []).length >= 100);
   assert.match(files.privacyMd(BASE), /30 days/);
-  assert.match(files.homeMd(BASE), /^# Agent-Ready Check/);
+  assert.match(files.homeMd(BASE), /^# Is AI-Native/);
   assert.deepEqual(files.gpcJson().gpc, true);
 });

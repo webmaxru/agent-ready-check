@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Agent-Ready Check on Azure Static Web Apps: one-time setup (and safe re-runs).
+  Is AI-Native on Azure Static Web Apps: one-time setup (and safe re-runs).
 
 .DESCRIPTION
   Creates or updates, in one resource group (infra/main.bicep):
@@ -19,6 +19,9 @@
   ./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check -CustomDomain isainative.dev -DomainValidationMethod dns-txt-token
 .EXAMPLE
   ./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check -NoBrowserRunner -Yes
+.NOTES
+  A deployment made before the rename to Is AI-Native keeps its resource names:
+  pass -ResourceGroup rg-agent-ready-check -Name agent-ready-check to update it.
 #>
 [CmdletBinding()]
 param(
@@ -27,11 +30,11 @@ param(
   [string]$CustomDomain = '',
   [ValidateSet('cname-delegation', 'dns-txt-token')]
   [string]$DomainValidationMethod = 'cname-delegation',
-  [string]$ResourceGroup = 'rg-agent-ready-check',
+  [string]$ResourceGroup = 'rg-is-ai-native',
   [string]$Location = 'westeurope',
   [ValidateSet('westeurope', 'eastus2', 'centralus', 'westus2', 'eastasia')]
   [string]$SwaLocation = 'westeurope',
-  [string]$Name = 'agent-ready-check',
+  [string]$Name = 'is-ai-native',
   [ValidateSet('Free', 'Standard')]
   [string]$Sku = 'Free',
   [string]$Subscription = '',
@@ -177,16 +180,16 @@ if (-not $SkipOidc) {
   } else { Write-Ok "federated credential for $subject exists" }
 }
 
-# Runner image: the deploy workflow publishes ghcr.io/<owner>/agent-ready-check-runner. Until it has run once,
+# Runner image: the deploy workflow publishes ghcr.io/<owner>/is-ai-native-runner. Until it has run once,
 # a public placeholder keeps the Container App deployable; the workflow swaps in the real image.
 if ($Runner -and -not $RunnerImage) {
   $RunnerImage = $PlaceholderImage
   if ($OwnerLc) {
-    $candidate = "ghcr.io/$OwnerLc/agent-ready-check-runner:latest"
+    $candidate = "ghcr.io/$OwnerLc/is-ai-native-runner:latest"
     try {
-      $tok = (Invoke-RestMethod -Uri "https://ghcr.io/token?scope=repository:${OwnerLc}/agent-ready-check-runner:pull" -TimeoutSec 20).token
+      $tok = (Invoke-RestMethod -Uri "https://ghcr.io/token?scope=repository:${OwnerLc}/is-ai-native-runner:pull" -TimeoutSec 20).token
       $hdr = @{ Authorization = "Bearer $tok"; Accept = 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json' }
-      $r = Invoke-WebRequest -Uri "https://ghcr.io/v2/$OwnerLc/agent-ready-check-runner/manifests/latest" -Method Head -Headers $hdr -TimeoutSec 20 -UseBasicParsing
+      $r = Invoke-WebRequest -Uri "https://ghcr.io/v2/$OwnerLc/is-ai-native-runner/manifests/latest" -Method Head -Headers $hdr -TimeoutSec 20 -UseBasicParsing
       if ($r.StatusCode -eq 200) { $RunnerImage = $candidate }
     } catch { $RunnerImage = $PlaceholderImage }
     if ($RunnerImage -eq $PlaceholderImage) { Write-Info 'runner image not published yet (or not public); using a placeholder until the deploy workflow runs' }
@@ -205,7 +208,7 @@ if (-not $ClearLeagueSettings -and (-not $LeagueAdminToken -or -not $LeagueRemov
 }
 
 function Invoke-Deploy([string]$Domain) {
-  $deployName = 'agent-ready-check-' + (Get-Date).ToString('yyyyMMddHHmmss')
+  $deployName = 'is-ai-native-' + (Get-Date).ToString('yyyyMMddHHmmss')
   $runnerFlag = 'false'
   if ($Runner) { $runnerFlag = 'true' }
   $json = Invoke-Az @('deployment', 'group', 'create', '-g', $ResourceGroup, '-n', $deployName, '-f', (Join-Path $InfraDir 'main.bicep'),

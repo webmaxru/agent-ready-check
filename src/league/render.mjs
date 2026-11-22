@@ -127,7 +127,7 @@ export function renderLeagueHtml({ base, board = 'top', rows, page = 1, stats, c
     .map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
   const body = `<section class="lhero" aria-labelledby="league-h">
 <div>
-<p class="kicker">${glyph('trophy', 16)} Agent-Ready League</p>
+<p class="kicker">${glyph('trophy', 16)} AI-Native League</p>
 <h1 id="league-h">Fix it. Scan it. Climb the board.</h1>
 <p class="lead">Every site that joins gets a rank, a division, XP and achievements. Gain points by fixing real findings, keep a weekly streak, and see who is the most agent-ready on the web.</p>
 ${scanForm({ browserAvailable, id: 'league-scan', tool: false })}
@@ -151,11 +151,11 @@ ${crownCards ? `<ul class="crowns">${crownCards}</ul>` : '<p class="empty">Crown
 </section>
 ${rulesHtml(removalUrl)}`;
   return shell({
-    base, path: '/league', title: 'Agent-Ready League', mdPath: `/league.md?board=${b}&page=${pg}`,
+    base, path: '/league', title: 'AI-Native League', mdPath: `/league.md?board=${b}&page=${pg}`,
     description: `The most agent-ready websites, ranked. ${stats.players} ${stats.players === 1 ? 'site has' : 'sites have'} joined. Scan yours, join, fix findings to climb, and win achievements.`,
     head: `<script type="module" src="/assets/league.js?v=${LEAGUE_ASSET_VERSION}"></script>\n`,
     body,
-    jsonld: { '@context': 'https://schema.org', '@type': 'ItemList', name: 'Agent-Ready League', itemListOrder: 'https://schema.org/ItemListOrderDescending', numberOfItems: rows.length, itemListElement: slice.slice(0, 10).map((r, i) => ({ '@type': 'ListItem', position: (pg - 1) * PER_PAGE + i + 1, name: r.host, url: `${String(base || '').replace(/\/+$/, '')}${hostUrl(r.host)}` })) },
+    jsonld: { '@context': 'https://schema.org', '@type': 'ItemList', name: 'AI-Native League', itemListOrder: 'https://schema.org/ItemListOrderDescending', numberOfItems: rows.length, itemListElement: slice.slice(0, 10).map((r, i) => ({ '@type': 'ListItem', position: (pg - 1) * PER_PAGE + i + 1, name: r.host, url: `${String(base || '').replace(/\/+$/, '')}${hostUrl(r.host)}` })) },
   });
 }
 
@@ -216,9 +216,9 @@ export function renderProfileHtml({ base, st, quests = null, banner = null, now 
   const b = String(base || '').replace(/\/+$/, '');
   const share = `${b}${hostUrl(host)}`;
   const rankText = st.ranks.top ? `#${st.ranks.top} of ${st.total}` : 'unranked';
-  const shareText = `${host} is ${rankText} on the Agent-Ready League: ${e.score}/100, ${div.name} division. Can your site beat it?`;
+  const shareText = `${host} is ${rankText} on the AI-Native League: ${e.score}/100, ${div.name} division. Can your site beat it?`;
   const xShare = `https://x.com/intent/post?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(share)}`;
-  const embed = `[![Agent-Ready League](${b}/league/badge/${host}.svg)](${share})`;
+  const embed = `[![AI-Native League](${b}/league/badge/${host}.svg)](${share})`;
   const unlocked = ACHIEVEMENTS.filter((a) => e.achievements[a.id]);
   const grid = ACHIEVEMENTS.map((a) => (e.achievements[a.id]
     ? `<li class="ach on"><span class="tile">${glyph(a.glyph, 28)}</span><b>${esc(a.name)}</b><span class="small">${esc(a.how)}</span><span class="xpn">+${a.xp} XP, ${esc(e.achievements[a.id].slice(0, 10))}</span></li>`
@@ -263,8 +263,8 @@ ${copyBlock('embed-md', 'Badge Markdown', embed)}
 <p class="small">The badge updates as your rank changes. It never starts a scan.</p></section>
 <p class="small">Community-submitted listing: anyone can add a public site, and the site's owner has not verified it. <a href="${esc(removalUrl)}">Ask for removal</a>.</p>`;
   return shell({
-    base, path: hostUrl(host), title: `${host} on the Agent-Ready League`, mdPath: `${hostUrl(host)}?format=markdown`, noindex: !active,
-    description: `${host} is ${rankText} on the Agent-Ready League with ${e.score}/100 (${div.name} division, level ${e.level}), ${fmt(e.xp)} XP and ${unlocked.length} achievements.`,
+    base, path: hostUrl(host), title: `${host} on the AI-Native League`, mdPath: `${hostUrl(host)}?format=markdown`, noindex: !active,
+    description: `${host} is ${rankText} on the AI-Native League with ${e.score}/100 (${div.name} division, level ${e.level}), ${fmt(e.xp)} XP and ${unlocked.length} achievements.`,
     head: `<script type="module" src="/assets/league.js?v=${LEAGUE_ASSET_VERSION}"></script>\n`, body,
   });
 }
@@ -310,7 +310,7 @@ export function leaguePanel({ report, ctx }) {
     action = `<a class="btn" href="/league/${encodeURIComponent(entry.host)}">Open the profile</a>`;
   }
   return `<section class="band league-panel" id="league" aria-labelledby="lp-h">
-<h2 id="lp-h" class="sh">Agent-Ready League</h2>
+<h2 id="lp-h" class="sh">AI-Native League</h2>
 <div class="lp-grid">
 <div class="lp-main">${head}${action}${note}</div>
 <div class="lp-quests"><h3>Next quests</h3>${questsHtml(q, { reportHref: report.id ? `/r/${report.id}` : '' })}</div>
@@ -330,9 +330,9 @@ function badgeW(st) {
 const DIV_COLOR = { bronze: '#c05200', silver: '#58635b', gold: '#7e6c07', platinum: '#046ece', diamond: '#0d6731' };
 const charW = (s) => Math.round([...String(s)].reduce((w, ch) => w + (/[il.,:|!']/.test(ch) ? 3.6 : /[mwMW@]/.test(ch) ? 9.5 : /[A-Z0-9#]/.test(ch) ? 7.4 : 6.4), 0)) + 12;
 
-/** SVG badge: "agent-ready league | #7 · Gold". Square, flat, accessible. */
+/** SVG badge: "ai-native league | #7 · Gold". Square, flat, accessible. */
 export function renderLeagueBadge({ rank = null, total = null, division = null, score = null } = {}) {
-  const label = 'agent-ready league';
+  const label = 'ai-native league';
   const listed = rank != null && division;
   const value = listed ? `#${rank} · ${DIVISIONS.find((d) => d.id === division)?.name || division}${score != null ? ` · ${score}` : ''}` : 'not listed';
   const color = listed ? DIV_COLOR[division] || '#58635b' : '#6e7681';
@@ -352,7 +352,7 @@ export function renderLeagueMarkdown({ base, board = 'top', rows, page = 1, stat
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
   const pg = Math.min(Math.max(1, page), pages);
   const shown = rows.slice((pg - 1) * PER_PAGE, pg * PER_PAGE);
-  const L = [`# Agent-Ready League`, '', `The most agent-ready websites, ranked. ${stats.players} ${stats.players === 1 ? 'site has' : 'sites have'} joined (average score ${stats.players ? stats.average : 'n/a'}).`, '',
+  const L = [`# AI-Native League`, '', `The most agent-ready websites, ranked. ${stats.players} ${stats.players === 1 ? 'site has' : 'sites have'} joined (average score ${stats.players ? stats.average : 'n/a'}).`, '',
     `Boards: ${BOARD_IDS.map((id) => (id === board ? `**${BOARDS[id].name}**` : `[${BOARDS[id].name}](${b}/league.md?board=${id})`)).join(' | ')}. ${BOARDS[board].blurb}`, ''];
   if (rows.length) {
     L.push('| Rank | Site | Division | Score | Gain 30d | Level | XP | Streak | Achievements |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
@@ -370,7 +370,7 @@ export function renderLeagueMarkdown({ base, board = 'top', rows, page = 1, stat
 export function renderProfileMarkdown({ base, st, now = Date.now(), removalUrl = DEFAULT_REMOVAL_URL }) {
   const b = String(base || '').replace(/\/+$/, ''); const e = st.entry;
   const pl = playerLevel(e.xp);
-  const L = [`# ${mdc(e.host)} on the Agent-Ready League`, '',
+  const L = [`# ${mdc(e.host)} on the AI-Native League`, '',
     `- Score: ${e.score}/100 (best ${e.best_score}), ${divisionOf(e.score).name} division, isitagentready-compatible level ${e.level} (${LEVEL_NAMES[e.level]})`,
     `- Rank: Top ${st.ranks.top ? `#${st.ranks.top}` : 'unranked'} of ${st.total}, Climbers ${st.ranks.climbers ? `#${st.ranks.climbers}` : '-'}, Grinders ${st.ranks.grinders ? `#${st.ranks.grinders}` : '-'}`,
     `- XP: ${e.xp} (player level ${pl.level}), weekly streak ${e.streak_week != null && weekOf(now) - e.streak_week <= 1 ? e.streak : 0}`,

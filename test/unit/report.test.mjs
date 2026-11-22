@@ -38,7 +38,7 @@ test('renderReportHtml escapes every site-controlled string', async () => {
 test('renderReportHtml has the key parts', async () => {
   const report = await evilReport();
   const out = renderReportHtml(report, { baseUrl: 'https://check.example', reportId: 'r1' });
-  for (const part of ['<main id="main">', 'aria-label="Agent-Ready score', 'isitagentready-compatible level', 'Lighthouse Agentic Browsing view', 'id="layers-h"', 'id="filters"', 'toolname="filter_findings"', 'toolname="scan_site"', 'Copy all fix prompts', 'https://check.example/r/r1', '/badge/example.com.svg', 'What the standard badges mean', 'id="requests"', '<meta name="robots" content="noindex">']) {
+  for (const part of ['<main id="main">', 'aria-label="AI-Native score', 'isitagentready-compatible level', 'Lighthouse Agentic Browsing view', 'id="layers-h"', 'id="filters"', 'toolname="filter_findings"', 'toolname="scan_site"', 'Copy all fix prompts', 'https://check.example/r/r1', '/badge/example.com.svg', 'What the standard badges mean', 'id="requests"', '<meta name="robots" content="noindex">']) {
     assert.ok(out.includes(part), `missing ${part}`);
   }
   assert.equal((out.match(/<details class="finding/g) || []).length, report.checks.length);
@@ -67,7 +67,7 @@ test('renderReportMarkdown escapes Markdown and HTML from the site', async () =>
   const report = await evilReport();
   const md = renderReportMarkdown(report, { baseUrl: 'https://check.example', reportId: 'r1' });
   assert.ok(md.startsWith('# Agent-readiness report'));
-  assert.ok(md.includes('Agent-Ready score: **'));
+  assert.ok(md.includes('AI-Native score: **'));
   assert.ok(!md.includes('<script>'));
   assert.ok(md.includes('\\<script\\>'));
   const agent = renderReportMarkdown(report, { format: 'agent' });
