@@ -26,7 +26,7 @@
     "node": ">=22"
   },
   "bin": {
-    "is-ai-native": "bin/is-ai-native.mjs"
+    "is-ai-native-site": "bin/is-ai-native.mjs"
   },
   "exports": {
     ".": "./src/index.mjs",

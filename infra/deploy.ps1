@@ -16,7 +16,7 @@
   Bash twin: infra/deploy.sh.
 
 .EXAMPLE
-  ./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check -CustomDomain isainative.dev -DomainValidationMethod dns-txt-token
+  ./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check -ResourceGroup rg-agent-ready-check -Name agent-ready-check -CustomDomain isainative.dev -DomainValidationMethod dns-txt-token
 .EXAMPLE
   ./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check -NoBrowserRunner -Yes
 .NOTES

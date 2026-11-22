@@ -12,7 +12,7 @@
 # Needs az (signed in), curl and python3, plus gh (signed in) unless --oidc-subject is supplied.
 # PowerShell twin: infra/deploy.ps1.
 #
-#   ./infra/deploy.sh --github-repo webmaxru/agent-ready-check --custom-domain isainative.dev --domain-validation-method dns-txt-token
+#   ./infra/deploy.sh --github-repo webmaxru/agent-ready-check --resource-group rg-agent-ready-check --name agent-ready-check --custom-domain isainative.dev --domain-validation-method dns-txt-token
 #
 # Options
 #   --github-repo OWNER/REPO   repository whose workflows may deploy (required unless --skip-oidc)

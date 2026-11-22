@@ -98,7 +98,7 @@ npx agent-ready-check http://localhost:3000 --allow-private --fail-under 80 --le
 npx agent-ready-check https://example.com --only crawl.robots-txt,content.llms-txt
 ```
 
-The package keeps its npm name `agent-ready-check`; installed (`npm i -g agent-ready-check` or as a dev dependency), the command is `is-ai-native`.
+The package keeps its npm name `agent-ready-check`; installed (`npm i -g agent-ready-check` or as a dev dependency), the command is `is-ai-native-site`.
 
 ### Badge
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Is AI-Native CLI: scan a URL from the terminal or in CI.
-//   is-ai-native <url> [--json|--md|--prompts] [--browser] [--allow-private] [--fail-under N]
+//   is-ai-native-site <url> [--json|--md|--prompts] [--browser] [--allow-private] [--fail-under N]
 //                      [--level-at-least N] [--only id,id] [--timeout S] [--help] [--version]
 // Exit codes: 0 ok, 1 a gate failed (--fail-under / --level-at-least), 2 usage or scan error.
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 
-export const USAGE = `Usage: is-ai-native <url> [options]
+export const USAGE = `Usage: is-ai-native-site <url> [options]
 
 Scan a website for agent-readiness (checks from the book "The Agent-Ready Web").
 
@@ -102,7 +102,7 @@ export function table(report) {
 
 export async function main(argv = process.argv.slice(2), io = { out: (s) => process.stdout.write(s), err: (s) => process.stderr.write(s) }) {
   let o;
-  try { o = parseArgs(argv); } catch (e) { io.err(`is-ai-native: ${e.message}\n\n${USAGE}\n`); return 2; }
+  try { o = parseArgs(argv); } catch (e) { io.err(`is-ai-native-site: ${e.message}\n\n${USAGE}\n`); return 2; }
   if (o.help) { io.out(`${USAGE}\n`); return 0; }
   const { VERSION } = await import('../src/core/fetcher.mjs');
   if (o.version) { io.out(`${VERSION}\n`); return 0; }
@@ -111,7 +111,7 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => proc
     const { scanNode } = await import('../src/node/index.mjs');
     report = await scanNode(o.url, { browser: o.browser, allowPrivate: o.allowPrivate, only: o.only || undefined, runtime: 'cli', browserOptions: process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {} });
   } catch (e) {
-    io.err(`is-ai-native: ${e.message}\n`);
+    io.err(`is-ai-native-site: ${e.message}\n`);
     return 2;
   }
   if (o.format === 'json') io.out(`${JSON.stringify(report, null, 2)}\n`);

@@ -135,9 +135,9 @@ Until `AZURE_CLIENT_ID` exists, the deploy workflows skip their jobs, so merges 
    - **Browser runner image**: builds `Dockerfile.runner`, pushes `ghcr.io/<owner>/is-ai-native-runner` with the commit sha and `latest`, signs in to Azure with OIDC and points the Container App at the new image.
    - **Static Web App and API**: runs the unit tests, builds the site and the function bundle, reads the Static Web Apps deployment token with the OIDC sign-in (masked, never stored), deploys, then smoke-tests the live site and records a self-scan in the run summary.
 2. The first run's runner rollout fails if the new image is private, because the Container App pulls it anonymously. Make it public once: your GitHub profile > **Packages** > `is-ai-native-runner` > **Package settings** > **Danger Zone** > **Change visibility** > **Public**. While there, under **Manage Actions access**, check the repository has write access (it does when the workflow created the package).
-3. Re-run the failed job. Open the `PUBLIC_BASE_URL`; the site is live on the default host name.
+3. Re-run the failed runner job and confirm it succeeds. Check that the active Container App revision uses the new image, then run a browser-enabled scan through `PUBLIC_BASE_URL` and verify browser collection succeeds. Open the site on the default host name.
 
-The image was called `agent-ready-check-runner` before the rename to Is AI-Native. On an existing deployment, the first deploy after the rename pushes the new, private `is-ai-native-runner` package, so do item 2 once more for it; the old package can then be deleted.
+The image was called `agent-ready-check-runner` before the rename to Is AI-Native. On an existing deployment, the first deploy after the rename pushes the new, private `is-ai-native-runner` package, so do items 2 and 3 for it. Keep the old package while any revision uses it or it is needed for rollback; making the new package public alone does not switch the active revision.
 
 **Cost:** GitHub Actions minutes are free for public repositories; GitHub Container Registry is free for public images.
 

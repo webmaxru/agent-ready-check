@@ -1,8 +1,17 @@
 // H4: CLI argument parsing, gates and table output (no network: main() is not run against a site).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { parseArgs, gates, table, main, USAGE } from '../../bin/is-ai-native.mjs';
 import { fakeReport } from './server-fake-report.mjs';
+
+test('package exposes the distinct site CLI', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url)));
+  const lock = JSON.parse(readFileSync(new URL('../../package-lock.json', import.meta.url)));
+  assert.deepEqual(pkg.bin, { 'is-ai-native-site': 'bin/is-ai-native.mjs' });
+  assert.deepEqual(lock.packages[''].bin, pkg.bin);
+  assert.match(USAGE, /^Usage: is-ai-native-site /);
+});
 
 test('parseArgs: defaults and every option', () => {
   assert.deepEqual(parseArgs(['example.com']), { url: 'example.com', format: 'table', browser: false, allowPrivate: false, failUnder: null, levelAtLeast: null, only: null, help: false, version: false });
@@ -51,7 +60,7 @@ test('main: usage errors exit 2, --help and --version exit 0', async () => {
   const out = []; const err = [];
   const io = { out: (s) => out.push(s), err: (s) => err.push(s) };
   assert.equal(await main([], io), 2);
-  assert.match(err.join(''), /URL is required/);
+  assert.match(err.join(''), /^is-ai-native-site: a URL is required/);
   assert.equal(await main(['--help'], io), 0);
   assert.ok(out.join('').includes(USAGE.split('\n')[0]));
   assert.equal(await main(['--version'], io), 0);
@@ -61,5 +70,5 @@ test('main: usage errors exit 2, --help and --version exit 0', async () => {
 test('main: a scan of a refused URL exits 2 with a message', async () => {
   const err = [];
   assert.equal(await main(['ftp://example.com'], { out: () => {}, err: (s) => err.push(s) }), 2);
-  assert.match(err.join(''), /http and https/);
+  assert.match(err.join(''), /^is-ai-native-site: .*http and https/);
 });
