@@ -308,18 +308,33 @@ export function createApp(o) {
     return true;
   };
   const invalidateLeagueSnapshot = () => { leagueGeneration++; leagueSnapshot = null; leagueLoad = null; leagueSuppressionSnapshot.clear(); };
-  const leagueEntries = async () => {
-    const now = clock();
-    if (leagueSnapshot && now - leagueSnapshotAt < 5_000) return leagueSnapshot;
-    const generation = leagueGeneration;
-    if (leagueLoad?.generation === generation) return leagueLoad.promise;
-    const load = { generation, promise: null };
+  let leagueSnapshotStarted = -Infinity; let confirmLoad = null; let confirmStarted = -Infinity;
+  const mono = () => performance.now();
+  const loadLeague = () => {
+    const generation = leagueGeneration; const started = mono();
+    const load = { generation, started, promise: null };
     load.promise = Promise.resolve().then(() => league.list()).then((entries) => {
-      if (generation === leagueGeneration) { leagueSnapshot = entries; leagueSnapshotAt = clock(); leagueSuppressionSnapshot.clear(); }
+      if (generation === leagueGeneration && started >= leagueSnapshotStarted) { leagueSnapshot = entries; leagueSnapshotAt = clock(); leagueSnapshotStarted = started; leagueSuppressionSnapshot.clear(); }
       return entries;
     }).finally(() => { if (leagueLoad === load) leagueLoad = null; });
     leagueLoad = load;
     return load.promise;
+  };
+  const leagueEntries = async () => {
+    if (leagueSnapshot && clock() - leagueSnapshotAt < 5_000) return leagueSnapshot;
+    if (leagueLoad?.generation === leagueGeneration) return leagueLoad.promise;
+    return loadLeague();
+  };
+  // Standings loaded after `since` (a post-join confirmation may land on an instance whose snapshot predates the write).
+  // Waiting requests share one reload, and at most one such reload starts per second, so query flags cannot multiply store reads.
+  const leagueEntriesSince = async (since) => {
+    if (leagueSnapshot && leagueSnapshotStarted >= since) return leagueSnapshot;
+    if (leagueLoad?.generation === leagueGeneration && leagueLoad.started >= since) return leagueLoad.promise;
+    if (!confirmLoad) {
+      const wait = Math.max(0, confirmStarted + 1_000 - mono());
+      confirmLoad = new Promise((r) => setTimeout(r, wait)).then(() => { confirmLoad = null; confirmStarted = mono(); return loadLeague(); });
+    }
+    return confirmLoad;
   };
   const leagueSuppressed = async (host) => {
     const entries = await leagueEntries();
@@ -355,7 +370,7 @@ export function createApp(o) {
       const reportProblem = submissionProblem(report, clock());
       const entries = await leagueEntries();
       const host = reportHost(report); const entry = entries.find((e) => e.host === host) || null;
-      const suppressed = await leagueSuppressed(host);
+      const suppressed = entry ? false : await leagueSuppressed(host); // removal deletes the standing, so a listed host is never suppressed
       const standingProblem = entry && !reportProblem ? applySubmission(entry, snapshotOf(report), clock()) : null;
       const joinProblem = reportProblem || (standingProblem?.error ? standingProblem.message : null);
       const st = entry ? standing(entries, host, clock()) : null;
@@ -600,6 +615,7 @@ export function createApp(o) {
     return c.body(svg, 200, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'public, max-age=600' });
   });
   app.get('/league/:host', async (c) => {
+    const arrived = mono();
     let entries = await leagueEntries();
     const raw = c.req.param('host'); const rawHost = normalizeHost(raw); const suffix = raw.endsWith('.md');
     const literal = entries.find((e) => e.host === rawHost);
@@ -620,15 +636,8 @@ export function createApp(o) {
       host = suffix ? aliasHost : rawHost;
       md = suffix;
     }
-    // Right after a join another instance may still hold a snapshot from before the write: read this host directly.
-    if (!md && (c.req.query('joined') || c.req.query('updated'))) {
-      const live = await league.get(host).catch(() => null);
-      if (live) {
-        const swap = (list) => [...list.filter((e) => e.host !== live.host), live];
-        entries = swap(entries);
-        if (leagueSnapshot) leagueSnapshot = swap(leagueSnapshot);
-      }
-    }
+    // Right after a join this instance may still hold a snapshot from before the write: use standings loaded after this request.
+    if (!md && (c.req.query('joined') || c.req.query('updated'))) entries = await leagueEntriesSince(arrived).catch(() => entries);
     const st = standing(entries, host, clock());
     if (!st) return errorPage(c, 404, `${host} has not joined the League yet. Scan it, then press Join on the report page.`);
     const base = baseOf(c);

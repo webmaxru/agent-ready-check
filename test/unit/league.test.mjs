@@ -513,6 +513,23 @@ test('the post-join profile reads the host fresh instead of a stale board snapsh
   const profile = await app.request(`${B}/league/fresh.example?joined=1`);
   assert.equal(profile.status, 200);
   assert.match(await profile.text(), /is on the board/);
+  assert.equal((await app.request(`${B}/league/fresh.example`)).status, 200, 'the confirmation reload refreshed the shared snapshot');
+});
+
+test('post-join confirmation reads are shared and rate-bounded', async () => {
+  const base = memoryLeague({ now: () => T0 });
+  let lists = 0;
+  const league = { ...base, list: async () => { lists++; return base.list(); } };
+  const { app } = makeApp({ league });
+  await app.request(`${B}/league`);
+  assert.equal(lists, 1);
+  const burst = await Promise.all(Array.from({ length: 20 }, (_, i) => app.request(`${B}/league/h${i}.example?joined=1`)));
+  assert.ok(burst.every((r) => r.status === 404));
+  assert.equal(lists, 2, 'twenty concurrent confirmations share one reload');
+  const t = Date.now();
+  await app.request(`${B}/league/again.example?updated=1`);
+  assert.equal(lists, 3);
+  assert.ok(Date.now() - t >= 900, 'a further reload waits for the one-second spacing');
 });
 
 test('join confirmation uses submission time and profile rescans use the submitted URL', async () => {
