@@ -21,6 +21,7 @@ import { scan as coreScan } from '../src/core/scan.mjs';
 import { transport, resolve } from '../src/node/transport.mjs';
 import { memoryStore } from '../src/store/memory.mjs';
 import { azureBlobStore } from '../src/store/azure-blob.mjs';
+import { createPostHogLogger } from './posthog-logs.mjs';
 
 /** Rebuild the visitor's URL: x-ms-original-url when Static Web Apps rewrote the request, else the request URL. */
 export function originalUrl(requestUrl, headers) {
@@ -52,6 +53,7 @@ async function remoteBrowser(url, env, timeoutMs) {
  * @returns {(request: Request) => Promise<Response>}
  */
 export function createAzureHandler(env = {}, o = {}) {
+  const posthogLogs = createPostHogLogger(env);
   const store = o.store || (env.REPORTS_CONNECTION_STRING
     ? azureBlobStore({ connectionString: env.REPORTS_CONNECTION_STRING, container: env.REPORTS_CONTAINER || 'reports' })
     : memoryStore());
@@ -64,7 +66,7 @@ export function createAzureHandler(env = {}, o = {}) {
       browserData: browser && runnerOn ? remoteBrowser(url, env, scanTimeoutMs + 5_000) : null,
       fetcherOptions: { scanTimeoutMs },
     }),
-    store, rateLimit, browserAvailable: runnerOn, resolve, baseUrl: env.BASE_URL || undefined, runtime: 'azure', leagueAdminToken: env.LEAGUE_ADMIN_TOKEN || '', leagueRemovalUrl: env.LEAGUE_REMOVAL_URL || undefined,
+    store, rateLimit, browserAvailable: runnerOn, resolve, baseUrl: env.BASE_URL || undefined, posthogKey: env.POSTHOG_KEY || '', posthogHost: env.POSTHOG_HOST || '', runtime: 'azure', leagueAdminToken: env.LEAGUE_ADMIN_TOKEN || '', leagueRemovalUrl: env.LEAGUE_REMOVAL_URL || undefined, posthogLog: posthogLogs.emit,
   });
   return async (request) => {
     const url = originalUrl(request.url, request.headers);

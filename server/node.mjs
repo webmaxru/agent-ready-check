@@ -16,6 +16,7 @@ import { scanNode } from '../src/node/index.mjs';
 import { resolve as dnsResolve } from '../src/node/transport.mjs';
 import { memoryStore } from '../src/store/memory.mjs';
 import { fsStore } from '../src/store/fs.mjs';
+import { createPostHogLogger } from './posthog-logs.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PUBLIC = join(ROOT, 'public');
@@ -91,7 +92,7 @@ export function serve(app, { port = 8080, host = '0.0.0.0', trustProxy = false }
 }
 
 /** Build the app for Node from env-like options. */
-export async function createNodeApp(env = process.env) {
+export async function createNodeApp(env = process.env, { posthogLog = () => {} } = {}) {
   const browserAvailable = await detectBrowser(env);
   const allowPrivate = env.ALLOW_PRIVATE === '1';
   const store = env.REPORTS_DIR ? fsStore({ dir: env.REPORTS_DIR }) : memoryStore();
@@ -100,19 +101,21 @@ export async function createNodeApp(env = process.env) {
   const app = createApp({
     scan: (url, { browser }) => scanNode(url, { browser, allowPrivate, browserOptions, runtime: 'node' }),
     store, rateLimit, browserAvailable, allowPrivate, resolve: dnsResolve,
-    baseUrl: env.BASE_URL || undefined, assets: publicAssets(env.PUBLIC_DIR || PUBLIC), runtime: 'node',
-    leagueAdminToken: env.LEAGUE_ADMIN_TOKEN || '', leagueRemovalUrl: env.LEAGUE_REMOVAL_URL || undefined, trustProxy: env.TRUST_PROXY === '1',
+    baseUrl: env.BASE_URL || undefined, assets: publicAssets(env.PUBLIC_DIR || PUBLIC), posthogKey: env.POSTHOG_KEY || '', posthogHost: env.POSTHOG_HOST || '', runtime: 'node',
+    leagueAdminToken: env.LEAGUE_ADMIN_TOKEN || '', leagueRemovalUrl: env.LEAGUE_REMOVAL_URL || undefined, trustProxy: env.TRUST_PROXY === '1', posthogLog,
   });
   return { app, store, browserAvailable };
 }
 
 export async function start(env = process.env) {
-  const { app, browserAvailable, store } = await createNodeApp(env);
+  const posthogLogs = createPostHogLogger(env);
+  const { app, browserAvailable, store } = await createNodeApp(env, { posthogLog: posthogLogs.emit });
   const port = Number(env.PORT || 8080);
   const server = await serve(app, { port, host: env.HOST || '0.0.0.0', trustProxy: env.TRUST_PROXY === '1' });
   const addr = server.address();
   console.log(`is-ai-native listening on http://${env.HOST || '0.0.0.0'}:${addr.port} (browser ${browserAvailable ? 'on' : 'off'}, store ${store.kind})`);
-  const stop = () => server.close(() => process.exit(0));
+  posthogLogs.emit('info', 'server started', { browser_checks_available: browserAvailable, report_store: store.kind });
+  const stop = () => server.close(() => { void posthogLogs.shutdown().finally(() => process.exit(0)); });
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
   return server;

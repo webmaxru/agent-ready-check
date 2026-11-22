@@ -72,7 +72,8 @@ ${noindex ? '<meta name="robots" content="noindex">\n' : ''}${canonical ? `<link
 <meta property="og:title" content="${esc(full)}">
 <meta property="og:description" content="${esc(description)}">
 <meta property="og:type" content="website">
-${canonical ? `<meta property="og:url" content="${esc(canonical)}">\n` : ''}${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld).replace(/</g, '\\u003c')}</script>\n` : ''}${head}<script type="module" src="/assets/app.js?v=${ASSET_VERSION}"></script>
+${canonical ? `<meta property="og:url" content="${esc(canonical)}">\n` : ''}${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld).replace(/</g, '\\u003c')}</script>\n` : ''}${head}<script src="/assets/posthog-init.js"></script>
+<script type="module" src="/assets/app.js?v=${ASSET_VERSION}"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
