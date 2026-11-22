@@ -1,7 +1,7 @@
 // Is AI-Native on Azure: Static Web Apps (site + managed Azure Functions API), Blob Storage for reports,
 // and an optional browser runner on Container Apps (scales to zero).
 //
-//   az deployment group create -g <rg> -f infra/main.bicep -p customDomain=isainative.dev domainValidationMethod=dns-txt-token ...
+//   az deployment group create -g <rg> -f infra/main.bicep -p customDomain=isainative.dev domainValidationMethod=dns-txt-token aliasDomain=www.isainative.dev ...
 // infra/deploy.sh and infra/deploy.ps1 wrap this (plus the one-time GitHub OIDC setup); docs/PUBLISHING.md has
 // the click-by-click version and the costs.
 targetScope = 'resourceGroup'
@@ -40,6 +40,9 @@ param customDomain string = ''
   'dns-txt-token'
 ])
 param domainValidationMethod string = 'cname-delegation'
+
+@description('Optional alias subdomain, for example www.isainative.dev. Bound with cname-delegation once its DNS-only CNAME points at the default host name; canonical links still use the public origin.')
+param aliasDomain string = ''
 
 @description('Public origin used in links, robots.txt, llms.txt, the API catalog and the MCP card. Empty means the custom domain when set, else the default host name.')
 param baseUrl string = ''
@@ -278,6 +281,19 @@ resource domain 'Microsoft.Web/staticSites/customDomains@2024-04-01' = if (!empt
   ]
 }
 
+// Static Web Apps processes one custom-domain operation at a time, so the alias waits for the main domain.
+resource alias 'Microsoft.Web/staticSites/customDomains@2024-04-01' = if (!empty(aliasDomain)) {
+  parent: swa
+  name: empty(aliasDomain) ? 'unused-alias.invalid' : aliasDomain
+  properties: {
+    validationMethod: 'cname-delegation'
+  }
+  dependsOn: [
+    appSettings
+    domain
+  ]
+}
+
 resource deployerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(deployerPrincipalId)) {
   name: guid(resourceGroup().id, deployerPrincipalId, contributorRoleId)
   properties: {
@@ -294,3 +310,4 @@ output storageAccountName string = storage.name
 output runnerAppName string = runnerOn ? runner.name : ''
 output runnerFqdn string = runnerOn ? runner!.properties.configuration.ingress.fqdn : ''
 output dnsRecord string = empty(customDomain) ? '' : 'CNAME ${customDomain} -> ${swa.properties.defaultHostname}'
+output aliasDnsRecord string = empty(aliasDomain) ? '' : 'CNAME ${aliasDomain} -> ${swa.properties.defaultHostname}'
