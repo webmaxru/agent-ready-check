@@ -47,7 +47,7 @@ function send(res, status, obj, extra = {}) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://runner');
   if (req.method === 'GET' && (url.pathname === '/health' || url.pathname === '/')) {
-    return send(res, 200, { status: 'ok', service: 'agent-ready-check browser runner', running, queued: queue.length, served, failed, uptime_s: Math.round((Date.now() - started) / 1000), mem_free_mb: Math.round(os.freemem() / 1048576), mem_total_mb: Math.round(os.totalmem() / 1048576), auth: TOKEN ? 'bearer' : 'disabled (RUNNER_TOKEN unset)' });
+    return send(res, 200, { status: 'ok', service: 'is-ai-native browser runner', running, queued: queue.length, served, failed, uptime_s: Math.round((Date.now() - started) / 1000), mem_free_mb: Math.round(os.freemem() / 1048576), mem_total_mb: Math.round(os.totalmem() / 1048576), auth: TOKEN ? 'bearer' : 'disabled (RUNNER_TOKEN unset)' });
   }
   if (req.method === 'GET' && url.pathname === '/diag' && authorized(req.headers.authorization)) {
     const { execSync } = await import('node:child_process');

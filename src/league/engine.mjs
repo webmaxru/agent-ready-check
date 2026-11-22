@@ -1,4 +1,4 @@
-// The Agent-Ready League: the rules of the game. Pure functions, runtime-neutral (Node, Workers, browsers), no I/O.
+// The AI-Native League: the rules of the game. Pure functions, runtime-neutral (Node, Workers, browsers), no I/O.
 //
 // How the game works (docs/LEAGUE.md has the player-facing version):
 //   - A site joins by submitting a report that this service produced, never a score typed in by hand.
@@ -19,7 +19,7 @@ export const HISTORY_MAX = 30;
 export const RANK_SUBMISSION_INTERVAL_MS = 6 * 3_600_000;
 export const BOARD_IDS = ['top', 'climbers', 'grinders', 'fresh'];
 export const BOARDS = {
-  top: { id: 'top', name: 'Top', blurb: 'The highest Agent-Ready scores right now.', metric: 'Score' },
+  top: { id: 'top', name: 'Top', blurb: 'The highest AI-Native scores right now.', metric: 'Score' },
   climbers: { id: 'climbers', name: 'Climbers', blurb: 'The biggest score gain over the last 30 days.', metric: 'Gain' },
   grinders: { id: 'grinders', name: 'Grinders', blurb: 'Most XP: effort, streaks and achievements, whatever the starting point.', metric: 'XP' },
   fresh: { id: 'fresh', name: 'Fresh', blurb: 'Joined in the last 14 days, by score.', metric: 'Score' },

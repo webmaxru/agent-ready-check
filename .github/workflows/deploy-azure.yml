@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RUNNER_IMAGE_NAME: agent-ready-check-runner
+  RUNNER_IMAGE_NAME: is-ai-native-runner
 
 jobs:
   runner-image:
@@ -54,7 +54,7 @@ jobs:
             ${{ steps.img.outputs.ref }}:latest
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.description=Agent-Ready Check browser runner
+            org.opencontainers.image.description=Is AI-Native browser runner
             org.opencontainers.image.licenses=MIT
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -127,5 +127,5 @@ jobs:
       - name: Self-scan
         continue-on-error: true
         run: |
-          node bin/agent-ready-check.mjs "${{ vars.PUBLIC_BASE_URL }}" --json > self-scan.json || true
+          node bin/is-ai-native.mjs "${{ vars.PUBLIC_BASE_URL }}" --json > self-scan.json || true
           node -e "const r=JSON.parse(require('fs').readFileSync('self-scan.json','utf8'));console.log('Self-scan: score '+r.score+', isitagentready level '+r.compat?.isitagentready?.level)" | tee -a "$GITHUB_STEP_SUMMARY"

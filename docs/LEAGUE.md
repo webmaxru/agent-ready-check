@@ -1,4 +1,4 @@
-# The Agent-Ready League
+# The AI-Native League
 
 A public, community-submitted leaderboard of the most agent-ready websites, with a game around it. The goal is that fixing a real finding feels like a move in a game: every report shows the fixes worth the most points, every re-scan can pay XP, and the board shows who leads.
 

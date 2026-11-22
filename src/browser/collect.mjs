@@ -79,7 +79,7 @@ async function defaultResolve(host) { return (await lookup(host, { all: true, ve
 // Runs in the page before any site script: CLS observer and a record of elements that get click listeners.
 function initScript() {
   const w = window;
-  w.__arc = { shifts: [], clickEls: new WeakSet() };
+  w.__isAINative = { shifts: [], clickEls: new WeakSet() };
   const sel = (n) => {
     try {
       if (!n || n.nodeType !== 1) return '';
@@ -92,14 +92,14 @@ function initScript() {
     new PerformanceObserver((list) => {
       for (const e of list.getEntries()) {
         if (e.hadRecentInput) continue;
-        w.__arc.shifts.push({ value: e.value, time: Math.round(e.startTime), sources: (e.sources || []).map((s) => sel(s.node)).filter(Boolean).slice(0, 5) });
+        w.__isAINative.shifts.push({ value: e.value, time: Math.round(e.startTime), sources: (e.sources || []).map((s) => sel(s.node)).filter(Boolean).slice(0, 5) });
       }
     }).observe({ type: 'layout-shift', buffered: true });
   } catch { /* not supported */ }
   try {
     const orig = EventTarget.prototype.addEventListener;
     EventTarget.prototype.addEventListener = function (type, fn, opts) {
-      try { if (this instanceof Element && /^(click|mousedown|mouseup|pointerdown|pointerup|touchstart|keydown)$/.test(type)) w.__arc.clickEls.add(this); } catch { /* ignore */ }
+      try { if (this instanceof Element && /^(click|mousedown|mouseup|pointerdown|pointerup|touchstart|keydown)$/.test(type)) w.__isAINative.clickEls.add(this); } catch { /* ignore */ }
       return orig.call(this, type, fn, opts);
     };
   } catch { /* ignore */ }
@@ -108,7 +108,7 @@ function initScript() {
 /** A desktop Chrome user agent that also names this checker (polite: sites can tell who is visiting). */
 export function browserUserAgent(version = '156.0.0.0') {
   const major = String(version).split('.')[0] || '156';
-  return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36 AgentReadyCheck/${VERSION} (+https://github.com/vibeprogrammer/agent-ready-check)`;
+  return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36 IsAINative/${VERSION} (+https://github.com/vibeprogrammer/agent-ready-check)`;
 }
 
 /** CLS as Lighthouse and web.dev define it: the largest session window (gap < 1 s, window <= 5 s). */
@@ -192,7 +192,7 @@ function pageProbe({ maxItems }) {
   for (const el of all) {
     if (clickables.length >= maxItems) break;
     if (SKIP.has(el.tagName)) continue;
-    const listener = window.__arc?.clickEls?.has(el) || el.hasAttribute('onclick');
+    const listener = window.__isAINative?.clickEls?.has(el) || el.hasAttribute('onclick');
     let pointer = false;
     if (!listener) {
       const cs = getComputedStyle(el);
@@ -294,7 +294,7 @@ export async function collectBrowser(url, { allowPrivate = false, timeoutMs = 30
     webmcp.tools = webmcp.tools.map((t) => ({ ...t, source: declared.has(t.name) && !t.annotations ? 'declarative' : 'imperative' }));
     webmcp.declaredForms = probe.declared;
 
-    const shifts = await page.evaluate(() => window.__arc?.shifts || []).catch(() => []);
+    const shifts = await page.evaluate(() => window.__isAINative?.shifts || []).catch(() => []);
     const cls = { value: clsFromShifts(shifts), shifts: shifts.slice(0, 20), observedMs: Date.now() - navStart };
 
     let renderedHtml = await page.content().catch(() => '');

@@ -27,7 +27,7 @@ export function openapi(base) {
       { name: 'scan', description: 'Run scans and read stored reports' },
       { name: 'checks', description: 'The check catalogue' },
       { name: 'badges', description: 'SVG badges for READMEs' },
-      { name: 'league', description: 'The Agent-Ready League leaderboard' },
+      { name: 'league', description: 'The AI-Native League leaderboard' },
     ],
     paths: {
       '/api/scan': {
@@ -104,7 +104,7 @@ export function openapi(base) {
           operationId: 'getLeague',
           tags: ['league'],
           summary: 'A League board',
-          description: 'The Agent-Ready League leaderboard. Boards: top (score), climbers (30-day gain), grinders (XP), fresh (joined in the last 14 days). Only sites that opted in appear.',
+          description: 'The AI-Native League leaderboard. Boards: top (score), climbers (30-day gain), grinders (XP), fresh (joined in the last 14 days). Only sites that opted in appear.',
           parameters: [
             { name: 'board', in: 'query', required: false, description: 'Board id.', schema: { type: 'string', enum: ['top', 'climbers', 'grinders', 'fresh'], default: 'top' } },
             { name: 'limit', in: 'query', required: false, description: 'Rows per page, 1 to 100.', schema: { type: 'integer', minimum: 1, maximum: 100, default: 25 } },

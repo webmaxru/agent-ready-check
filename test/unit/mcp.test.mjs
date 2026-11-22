@@ -21,7 +21,7 @@ test('initialize negotiates 2025 versions and accepts 2026-07-28', async () => {
   for (const v of ['2025-06-18', '2025-11-25', '2026-07-28']) {
     const { body } = await rpc('initialize', { protocolVersion: v, capabilities: {}, clientInfo: { name: 't', version: '1' } }, { 'mcp-protocol-version': v });
     assert.equal(body.result.protocolVersion, v);
-    assert.equal(body.result.serverInfo.name, 'agent-ready-check');
+    assert.equal(body.result.serverInfo.name, 'is-ai-native');
     assert.ok(body.result.capabilities.tools);
   }
   const { body } = await rpc('initialize', { protocolVersion: '2024-11-05' });
@@ -31,7 +31,7 @@ test('initialize negotiates 2025 versions and accepts 2026-07-28', async () => {
 test('server/discover (2026-07-28) lists versions, capabilities and serverInfo in _meta', async () => {
   const { body } = await rpc('server/discover', { _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } }, { 'mcp-protocol-version': '2026-07-28', 'mcp-method': 'server/discover' });
   assert.deepEqual(body.result.supportedVersions, PROTOCOLS);
-  assert.equal(body.result._meta['io.modelcontextprotocol/serverInfo'].name, 'agent-ready-check');
+  assert.equal(body.result._meta['io.modelcontextprotocol/serverInfo'].name, 'is-ai-native');
   assert.equal(body.result.resultType, 'complete');
 });
 

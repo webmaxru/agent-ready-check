@@ -39,7 +39,7 @@ export const TOOLS = [
         url: { type: 'string', description: 'The URL that was scanned.' },
         report_url: { type: 'string', description: 'Shareable HTML report, kept 30 days.' },
         id: { type: 'string', description: 'Report id for get_report.' },
-        score: { type: 'integer', description: 'Overall Agent-Ready score, 0-100.' },
+        score: { type: 'integer', description: 'Overall AI-Native score, 0-100.' },
         compat: { type: 'object', description: 'isitagentready-compatible level and Lighthouse Agentic view.' },
         layers: { type: 'array', description: 'Score per layer.', items: { type: 'object' } },
         checks: { type: 'array', description: 'Every check with status, message, standard and fix.', items: { type: 'object' } },
@@ -85,8 +85,8 @@ export const TOOLS = [
   },
   {
     name: 'get_league',
-    title: 'Read the Agent-Ready League',
-    description: 'Reads the Agent-Ready League, the public leaderboard of agent-ready websites that opted in. Without host it returns a board (top, climbers, grinders or fresh); with host it returns that site\'s standing: ranks, division, XP, streak, achievements and score history. Read only. Joining is done by submitting a report to POST /api/league.',
+    title: 'Read the AI-Native League',
+    description: 'Reads the AI-Native League, the public leaderboard of agent-ready websites that opted in. Without host it returns a board (top, climbers, grinders or fresh); with host it returns that site\'s standing: ranks, division, XP, streak, achievements and score history. Read only. Joining is done by submitting a report to POST /api/league.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -104,7 +104,7 @@ export const TOOLS = [
 export function summarize(report) {
   const iia = report.compat?.isitagentready;
   const lines = [
-    `Agent-Ready score for ${report.final_url || report.url}: ${report.score}/100.`,
+    `AI-Native score for ${report.final_url || report.url}: ${report.score}/100.`,
     iia ? `isitagentready-compatible level: ${iia.level} (${iia.level_name})${iia.next_level ? `; next level ${iia.next_level.target} needs ${iia.next_level.requirements.join(', ')}` : ''}.` : null,
     report.compat?.lighthouse_agentic?.score != null ? `Lighthouse Agentic Browsing view: ${Math.round(report.compat.lighthouse_agentic.score * 100)}/100.` : null,
     `Layers: ${(report.layers || []).map((l) => `${l.name} ${l.applicable ? l.score : 'n/a'}`).join(', ')}.`,

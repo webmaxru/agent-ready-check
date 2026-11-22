@@ -2,8 +2,8 @@
 # Used by the Azure deployment (infra/main.bicep, an optional Container App that scales to zero) and by any host that
 # runs the browser checks for a deployment that cannot start a browser itself (Static Web Apps functions, Workers).
 # Built and pushed to GitHub Container Registry by .github/workflows/deploy-azure.yml; CI builds and smoke-tests it.
-#   docker build -f Dockerfile.runner -t agent-ready-check-runner .
-#   docker run -p 8080:8080 -e RUNNER_TOKEN=... agent-ready-check-runner
+#   docker build -f Dockerfile.runner -t is-ai-native-runner .
+#   docker run -p 8080:8080 -e RUNNER_TOKEN=... is-ai-native-runner
 FROM node:24-bookworm-slim
 
 ENV NODE_ENV=production \

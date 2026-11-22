@@ -111,7 +111,7 @@ export async function start(env = process.env) {
   const port = Number(env.PORT || 8080);
   const server = await serve(app, { port, host: env.HOST || '0.0.0.0', trustProxy: env.TRUST_PROXY === '1' });
   const addr = server.address();
-  console.log(`agent-ready-check listening on http://${env.HOST || '0.0.0.0'}:${addr.port} (browser ${browserAvailable ? 'on' : 'off'}, store ${store.kind})`);
+  console.log(`is-ai-native listening on http://${env.HOST || '0.0.0.0'}:${addr.port} (browser ${browserAvailable ? 'on' : 'off'}, store ${store.kind})`);
   const stop = () => server.close(() => process.exit(0));
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);

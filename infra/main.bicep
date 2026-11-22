@@ -1,4 +1,4 @@
-// Agent-Ready Check on Azure: Static Web Apps (site + managed Azure Functions API), Blob Storage for reports,
+// Is AI-Native on Azure: Static Web Apps (site + managed Azure Functions API), Blob Storage for reports,
 // and an optional browser runner on Container Apps (scales to zero).
 //
 //   az deployment group create -g <rg> -f infra/main.bicep -p customDomain=isainative.dev domainValidationMethod=dns-txt-token ...
@@ -9,7 +9,7 @@ targetScope = 'resourceGroup'
 @description('Name prefix for the resources.')
 @minLength(3)
 @maxLength(24)
-param appName string = 'agent-ready-check'
+param appName string = 'is-ai-native'
 
 @description('Region for the storage account and the browser runner.')
 param location string = resourceGroup().location
@@ -47,7 +47,7 @@ param baseUrl string = ''
 @description('Deploy the browser runner (axe rules, accessibility tree, WebMCP, CLS run in Chromium there).')
 param deployBrowserRunner bool = true
 
-@description('Browser runner image, for example ghcr.io/<owner>/agent-ready-check-runner:latest (public package, built by the deploy workflow).')
+@description('Browser runner image, for example ghcr.io/<owner>/is-ai-native-runner:latest (public package, built by the deploy workflow).')
 param runnerImage string = ''
 
 @description('Bearer token shared by the function and the runner. A new random value on every deployment unless given.')
@@ -81,6 +81,8 @@ param leagueRemovalUrl string = ''
 param deployerPrincipalId string = ''
 
 var suffix = uniqueString(resourceGroup().id, appName)
+// 'arc' is the project's former initials (Agent-Ready Check). Keep it: a new prefix would create a new, empty
+// storage account and lose the stored reports and League data of existing deployments.
 var storageName = toLower('arc${take(suffix, 13)}')
 var runnerOn = deployBrowserRunner && !empty(runnerImage)
 var contributorRoleId = 'b24988ac-6180-42a0-ab88-20f7382dd24c'

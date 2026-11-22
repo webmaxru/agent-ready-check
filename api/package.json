@@ -1,8 +1,8 @@
 {
-  "name": "agent-ready-check-api",
+  "name": "is-ai-native-api",
   "version": "0.2.0",
   "private": true,
-  "description": "Azure Functions app (Static Web Apps managed functions) for Agent-Ready Check. Built by scripts/build-azure.mjs.",
+  "description": "Azure Functions app (Static Web Apps managed functions) for Is AI-Native. Built by scripts/build-azure.mjs.",
   "type": "module",
   "main": "dist/index.mjs",
   "engines": {

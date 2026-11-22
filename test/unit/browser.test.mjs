@@ -90,7 +90,7 @@ test('makeGuard blocks private addresses, odd ports and schemes, unless allowPri
 });
 
 test('browser user agent names the checker; findChromium never throws', () => {
-  assert.match(browserUserAgent('156.0.8078.4'), /Chrome\/156\.0\.0\.0 .*AgentReadyCheck\//);
+  assert.match(browserUserAgent('156.0.8078.4'), /Chrome\/156\.0\.0\.0 .*IsAINative\//);
   const p = findChromium();
   assert.ok(p === undefined || typeof p === 'string');
 });

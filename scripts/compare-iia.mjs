@@ -15,7 +15,7 @@ const sites = args.filter((a, i) => !a.startsWith('--') && (outIdx < 0 || i !== 
 async function cloudflare(url) {
   const t0 = Date.now();
   try {
-    const r = await fetch('https://isitagentready.com/api/scan', { method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': 'agent-ready-check comparison (+https://github.com/vibeprogrammer/agent-ready-check)' }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(90_000) });
+    const r = await fetch('https://isitagentready.com/api/scan', { method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': 'is-ai-native comparison (+https://github.com/vibeprogrammer/agent-ready-check)' }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(90_000) });
     const j = await r.json();
     return { ok: r.ok, ms: Date.now() - t0, level: j.level, checks: j.checks, raw_status: r.status };
   } catch (e) { return { ok: false, ms: Date.now() - t0, error: e.message }; }

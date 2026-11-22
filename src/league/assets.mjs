@@ -3,7 +3,7 @@
 // Colour pairs are the ones already in the contrast table of docs/DESIGN.md. No inline styles anywhere (CSP).
 
 export const LEAGUE_CSS = String.raw`
-/* ---- Agent-Ready League ---- */
+/* ---- AI-Native League ---- */
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .lhero{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:calc(var(--u)*6);align-items:start}
 .lhero h1{margin-bottom:calc(var(--u)*3)}
@@ -177,7 +177,7 @@ canvas.confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:non
 @media print{canvas.confetti,.league-panel form{display:none}}
 `;
 
-export const LEAGUE_JS = String.raw`// Agent-Ready League: progressive enhancement only. Every League page works without this script.
+export const LEAGUE_JS = String.raw`// AI-Native League: progressive enhancement only. Every League page works without this script.
 // - a burst of pixel confetti and a count-up when you have just joined or levelled up (skipped for reduced motion)
 const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 

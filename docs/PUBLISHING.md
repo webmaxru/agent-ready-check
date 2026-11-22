@@ -67,9 +67,9 @@ One run of `infra/deploy.sh` in Azure Cloud Shell does all of it. You need an Az
 
 3. Type `y` at the prompt. In about 5 to 10 minutes it:
    - registers the resource providers `Microsoft.Web`, `Microsoft.Storage`, `Microsoft.App`;
-   - creates resource group `rg-agent-ready-check` (West Europe);
-   - creates the Entra app registration **agent-ready-check-github** with a federated credential for `repo:webmaxru/agent-ready-check:environment:production` (issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`), no client secret;
-   - deploys `infra/main.bicep`: the Static Web App **agent-ready-check** (Free plan), a storage account with the `reports` container and a 30-day lifecycle rule, the Container Apps environment and the **agent-ready-check-runner** app (scale 0 to 1, a placeholder image until step 3), the application settings, and **Contributor** on the resource group for the app registration;
+   - creates resource group `rg-is-ai-native` (West Europe);
+   - creates the Entra app registration **is-ai-native-github** with a federated credential for `repo:webmaxru/agent-ready-check:environment:production` (issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`), no client secret;
+   - deploys `infra/main.bicep`: the Static Web App **is-ai-native** (Free plan), a storage account with the `reports` container and a 30-day lifecycle rule, the Container Apps environment and the **is-ai-native-runner** app (scale 0 to 1, a placeholder image until step 3), the application settings, and **Contributor** on the resource group for the app registration;
    - deploys on the generated Azure hostname. Do not bind the occupied apex until the existing site has moved (steps 4 and 5).
 4. Copy the block it prints at the end. It looks like this (your values differ):
 
@@ -82,13 +82,15 @@ One run of `infra/deploy.sh` in Azure Cloud Shell does all of it. You need an Az
      AZURE_CLIENT_ID          <guid>
      AZURE_TENANT_ID          <guid>
      AZURE_SUBSCRIPTION_ID    <guid>
-     AZURE_RESOURCE_GROUP     rg-agent-ready-check
-     AZURE_STATIC_WEB_APP     agent-ready-check
-     AZURE_RUNNER_APP         agent-ready-check-runner
+     AZURE_RESOURCE_GROUP     rg-is-ai-native
+     AZURE_STATIC_WEB_APP     is-ai-native
+     AZURE_RUNNER_APP         is-ai-native-runner
      PUBLIC_BASE_URL          https://<name>.azurestaticapps.net
    ```
 
    None of these values is a secret: they are identifiers. The sign-in works only from this repository's workflows in the `production` environment.
+
+**Set up before the rename to Is AI-Native?** The existing resources keep their original names: resource group `rg-agent-ready-check`, Static Web App `agent-ready-check`, runner `agent-ready-check-runner` and Entra app `agent-ready-check-github` (the live deployment uses these). Re-run setup with `--resource-group rg-agent-ready-check --name agent-ready-check` (PowerShell: `-ResourceGroup rg-agent-ready-check -Name agent-ready-check`) to update them in place, and keep the repository variables of step 2 pointing at them. Without those flags the script creates a second, empty deployment under the new names.
 
 **Cost:** about 0 USD a month at light use (Free plan, consumption billing, storage in cents; table in DEPLOY.md).
 
@@ -96,14 +98,14 @@ One run of `infra/deploy.sh` in Azure Cloud Shell does all of it. You need an Az
 
 The script is the shortest path. If you prefer clicking, the same result is:
 
-1. **Resource group:** Portal > Resource groups > Create > `rg-agent-ready-check`, West Europe.
-2. **Static Web App:** Create a resource > Static Web App > resource group above, name `agent-ready-check`, plan **Free**, region West Europe, deployment source **Other** (the workflow deploys with a token it reads at run time). Create.
-3. **Storage account:** Create > Storage account > name `arc` plus a few letters, Standard, LRS. After creation: Data storage > Containers > + Container `reports` (private). Data management > Lifecycle management > Add rule "expire-reports": base blobs, last modified more than 30 days ago > delete, filter prefix `reports/`. Security + networking > Access keys > copy the connection string.
-4. **Browser runner (optional):** Create > Container App > name `agent-ready-check-runner`, new Container Apps environment (Consumption only), image source **Docker Hub or other registries**, image `mcr.microsoft.com/k8se/quickstart:latest` for now, CPU 1, memory 2 Gi, Ingress enabled, accepting traffic from anywhere, target port **8080**. After creation: Secrets > add `runner-token` with a long random value; Containers > Edit > environment variable `RUNNER_TOKEN` from secret `runner-token`; Scale > min 0, max 1. Note the application URL.
+1. **Resource group:** Portal > Resource groups > Create > `rg-is-ai-native`, West Europe.
+2. **Static Web App:** Create a resource > Static Web App > resource group above, name `is-ai-native`, plan **Free**, region West Europe, deployment source **Other** (the workflow deploys with a token it reads at run time). Create.
+3. **Storage account:** Create > Storage account > name `isainative` plus a few letters, Standard, LRS. After creation: Data storage > Containers > + Container `reports` (private). Data management > Lifecycle management > Add rule "expire-reports": base blobs, last modified more than 30 days ago > delete, filter prefix `reports/`. Security + networking > Access keys > copy the connection string.
+4. **Browser runner (optional):** Create > Container App > name `is-ai-native-runner`, new Container Apps environment (Consumption only), image source **Docker Hub or other registries**, image `mcr.microsoft.com/k8se/quickstart:latest` for now, CPU 1, memory 2 Gi, Ingress enabled, accepting traffic from anywhere, target port **8080**. After creation: Secrets > add `runner-token` with a long random value; Containers > Edit > environment variable `RUNNER_TOKEN` from secret `runner-token`; Scale > min 0, max 1. Note the application URL.
 5. **App settings of the Static Web App:** Settings > Environment variables > add `BASE_URL` (the site's URL), `REPORTS_CONNECTION_STRING` (from 3), `REPORTS_CONTAINER` = `reports`, `BROWSER_RUNNER_URL` = `<runner URL>/collect`, `RUNNER_TOKEN` (same value as the secret), `SCAN_TIMEOUT_MS` = `30000`. Save.
-6. **App registration:** Microsoft Entra ID > App registrations > New registration > `agent-ready-check-github`, single tenant, no redirect URI. Copy the **Application (client) ID** and the **Directory (tenant) ID**.
+6. **App registration:** Microsoft Entra ID > App registrations > New registration > `is-ai-native-github`, single tenant, no redirect URI. Copy the **Application (client) ID** and the **Directory (tenant) ID**.
 7. **Federated credential:** in that app > Certificates & secrets > Federated credentials > Add credential > scenario **GitHub Actions deploying Azure resources** > Organization `webmaxru`, Repository `agent-ready-check`, Entity type **Environment**, environment name `production`, name `github-production`. Add.
-8. **Role assignment:** the resource group > Access control (IAM) > Add role assignment > **Contributor** > Members: User, group, or service principal > select `agent-ready-check-github` > Review + assign.
+8. **Role assignment:** the resource group > Access control (IAM) > Add role assignment > **Contributor** > Members: User, group, or service principal > select `is-ai-native-github` > Review + assign.
 
 ---
 
@@ -116,12 +118,12 @@ GitHub > the repository > **Settings** > **Secrets and variables** > **Actions**
 | `AZURE_CLIENT_ID` | from step 1 |
 | `AZURE_TENANT_ID` | from step 1 |
 | `AZURE_SUBSCRIPTION_ID` | from step 1 |
-| `AZURE_RESOURCE_GROUP` | `rg-agent-ready-check` |
-| `AZURE_STATIC_WEB_APP` | `agent-ready-check` |
-| `AZURE_RUNNER_APP` | `agent-ready-check-runner` (leave unset to run without browser checks) |
+| `AZURE_RESOURCE_GROUP` | `rg-is-ai-native` |
+| `AZURE_STATIC_WEB_APP` | `is-ai-native` |
+| `AZURE_RUNNER_APP` | `is-ai-native-runner` (leave unset to run without browser checks) |
 | `PUBLIC_BASE_URL` | the `https://<name>.azurestaticapps.net` URL for now; `https://isainative.dev` after step 5 |
 
-Use **Variables**, not Secrets: these are identifiers. (If the GitHub CLI is signed in in Cloud Shell, `--set-github-variables` on the script writes them for you.)
+Use **Variables**, not Secrets: these are identifiers. (If the GitHub CLI is signed in in Cloud Shell, `--set-github-variables` on the script writes them for you.) A deployment set up before the rename keeps `rg-agent-ready-check`, `agent-ready-check` and `agent-ready-check-runner` here.
 
 Optional: Settings > **Environments** > `production` (created by the first run) > add yourself as a **required reviewer** if you want to approve each production deploy.
 
@@ -130,10 +132,12 @@ Until `AZURE_CLIENT_ID` exists, the deploy workflows skip their jobs, so merges 
 ## Step 3. First deploy, then make the runner image public
 
 1. Repository > **Actions** > **Deploy to Azure** > **Run workflow** (branch `main`). It runs two jobs:
-   - **Browser runner image**: builds `Dockerfile.runner`, pushes `ghcr.io/<owner>/agent-ready-check-runner` with the commit sha and `latest`, signs in to Azure with OIDC and points the Container App at the new image.
+   - **Browser runner image**: builds `Dockerfile.runner`, pushes `ghcr.io/<owner>/is-ai-native-runner` with the commit sha and `latest`, signs in to Azure with OIDC and points the Container App at the new image.
    - **Static Web App and API**: runs the unit tests, builds the site and the function bundle, reads the Static Web Apps deployment token with the OIDC sign-in (masked, never stored), deploys, then smoke-tests the live site and records a self-scan in the run summary.
-2. The first run's runner rollout fails if the new image is private, because the Container App pulls it anonymously. Make it public once: your GitHub profile > **Packages** > `agent-ready-check-runner` > **Package settings** > **Danger Zone** > **Change visibility** > **Public**. While there, under **Manage Actions access**, check the repository has write access (it does when the workflow created the package).
-3. Re-run the failed job. Open the `PUBLIC_BASE_URL`; the site is live on the default host name.
+2. The first run's runner rollout fails if the new image is private, because the Container App pulls it anonymously. Make it public once: your GitHub profile > **Packages** > `is-ai-native-runner` > **Package settings** > **Danger Zone** > **Change visibility** > **Public**. While there, under **Manage Actions access**, check the repository has write access (it does when the workflow created the package).
+3. Re-run the failed runner job and confirm it succeeds. Check that the active Container App revision uses the new image, then run a browser-enabled scan through `PUBLIC_BASE_URL` and verify browser collection succeeds. Open the site on the default host name.
+
+The image was called `agent-ready-check-runner` before the rename to Is AI-Native. On an existing deployment, the first deploy after the rename pushes the new, private `is-ai-native-runner` package, so do items 2 and 3 for it. Keep the old package while any revision uses it or it is needed for rollback; making the new package public alone does not switch the active revision.
 
 **Cost:** GitHub Actions minutes are free for public repositories; GitHub Container Registry is free for public images.
 
@@ -144,8 +148,8 @@ The intended mapping is:
 | Public domain | Application | Azure Static Web App | DNS target |
 |---|---|---|---|
 | `repo.isainative.dev` | Existing GitHub repository scanner (`webmaxru/is-ai-native`) | `is-ai-native-frontend`, resource group `is-ai-native-rg` | `victorious-pebble-0d07f890f.7.azurestaticapps.net` |
-| `isainative.dev` | Agent-Ready Check | `agent-ready-check`, resource group `rg-agent-ready-check` | `kind-pond-004d16e03.8.azurestaticapps.net` |
-| `www.isainative.dev` | Recommended alias for Agent-Ready Check | `agent-ready-check` | `kind-pond-004d16e03.8.azurestaticapps.net` |
+| `isainative.dev` | Is AI-Native | `agent-ready-check`, resource group `rg-agent-ready-check` | `kind-pond-004d16e03.8.azurestaticapps.net` |
+| `www.isainative.dev` | Recommended alias for Is AI-Native | `agent-ready-check` | `kind-pond-004d16e03.8.azurestaticapps.net` |
 
 **Status on 18 November 2026:** the old site still owns the apex and `www`; `repo` has no DNS record. The checker has a pending, validation-only apex entry. No existing binding or DNS record was removed. Cloudflare changes need an authenticated zone administrator. Keep both deployment workflows idle during the actual binding/DNS transfer.
 
@@ -178,7 +182,7 @@ The intended mapping is:
    This keeps the same backend, reports storage and API hostname. Bicep updates backend `SITE_ORIGIN`, `ALLOWED_ORIGINS` and the availability-monitor URL; the frontend rebuild updates canonical tags, sitemap and social metadata. The generated Azure frontend hostname remains a supported CORS origin.
 6. Wait for CD to succeed. Verify a repository scan, an existing shared report (replace only its hostname), `runtime-config.js`, canonical URLs, and CORS from `https://repo.isainative.dev`. **Do not move the apex before this succeeds.** Old apex API access can stop working once CORS switches; complete the remaining cutover in the same maintenance window.
 
-### Step 5. Move the apex to Agent-Ready Check
+### Step 5. Move the apex to Is AI-Native
 
 1. Add the checker's Azure TXT verification record in Cloudflare. The pending token generated on 18 November 2026 is:
 

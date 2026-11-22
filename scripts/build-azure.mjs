@@ -55,7 +55,7 @@ const result = await build({
   logLevel: 'warning',
   plugins: [nodeExternals],
   // CommonJS dependencies inside an ESM bundle still call require() for Node built-ins.
-  banner: { js: "import { createRequire as __arcCreateRequire } from 'node:module'; const require = __arcCreateRequire(import.meta.url);" },
+  banner: { js: "import { createRequire as __isAINativeCreateRequire } from 'node:module'; const require = __isAINativeCreateRequire(import.meta.url);" },
 });
 const out = Object.values(result.metafile.outputs)[0];
 const ext = [...new Set((out.imports || []).filter((i) => i.external && !i.path.startsWith('node:')).map((i) => i.path))];

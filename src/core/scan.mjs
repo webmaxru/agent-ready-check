@@ -64,7 +64,7 @@ export async function scan(input, o) {
   // Built last so requests made after the checks (the homepage in selective scans, commerce probes) are included.
   const exchanges = Object.fromEntries(fetcher.log.map((ex) => [ex.id, SafeFetcher.evidence(ex)]));
   return {
-    tool: { name: 'agent-ready-check', version: VERSION, catalog_checked: catalog.checked, checks: CHECKS.length },
+    tool: { name: 'is-ai-native', version: VERSION, catalog_checked: catalog.checked, checks: CHECKS.length },
     url: url.href,
     final_url: home.finalUrl,
     homepage_exchange_id: home.id,

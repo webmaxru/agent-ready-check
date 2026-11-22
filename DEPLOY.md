@@ -1,4 +1,4 @@
-# Deploying Agent-Ready Check
+# Deploying Is AI-Native
 
 The production target is **Azure Static Web Apps** with the API as **Azure Functions**, set up once and then deployed by GitHub Actions on every push to `main`. The one-time setup, click by click, is in [docs/PUBLISHING.md](docs/PUBLISHING.md). This page explains the architecture, the decisions and the costs.
 
@@ -6,7 +6,7 @@ Other ways to run it (Node, Docker, a Cloudflare-style Worker) are at the end.
 
 ## Live deployment
 
-Deployed on 18 November 2026 to `rg-agent-ready-check` in West Europe:
+Deployed on 18 November 2026 to `rg-agent-ready-check` in West Europe. The live resources keep the names they were created with before the project was renamed to Is AI-Native (resource group `rg-agent-ready-check`, Static Web App `agent-ready-check`, runner `agent-ready-check-runner`, Entra app `agent-ready-check-github`); new deployments default to `is-ai-native`. To re-run setup against the live deployment, pass `--resource-group rg-agent-ready-check --name agent-ready-check` (PowerShell: `-ResourceGroup rg-agent-ready-check -Name agent-ready-check`).
 
 - Site: https://kind-pond-004d16e03.8.azurestaticapps.net
 - GitHub Actions deploys the site, API and browser runner on pushes to `main`, using OIDC.
@@ -109,21 +109,21 @@ For GitHub OIDC setup, sign in with `gh auth login` first, or supply `--oidc-sub
 | `--oidc-subject SUBJECT` | `-OidcSubject` | discovered with `gh` | exact subject for the production workflow; useful in Cloud Shell without a GitHub CLI login |
 | `--custom-domain HOST` | `-CustomDomain` | | bind a subdomain after CNAME setup, or reuse a Ready TXT-validated domain |
 | `--domain-validation-method METHOD` | `-DomainValidationMethod` | `cname-delegation` | use `dns-txt-token` for a prevalidated apex domain |
-| `--resource-group` | `-ResourceGroup` | `rg-agent-ready-check` | |
+| `--resource-group` | `-ResourceGroup` | `rg-is-ai-native` | |
 | `--location` | `-Location` | `westeurope` | storage and runner region |
 | `--swa-location` | `-SwaLocation` | `westeurope` | Static Web App region |
-| `--name` | `-Name` | `agent-ready-check` | name prefix |
+| `--name` | `-Name` | `is-ai-native` | name prefix |
 | `--sku Free\|Standard` | `-Sku` | `Free` | Static Web Apps plan |
 | `--subscription` | `-Subscription` | current | |
-| `--runner-image` | `-RunnerImage` | `ghcr.io/<owner>/agent-ready-check-runner:latest` | a placeholder until the image exists |
+| `--runner-image` | `-RunnerImage` | `ghcr.io/<owner>/is-ai-native-runner:latest` | a placeholder until the image exists |
 | `--no-browser-runner` | `-NoBrowserRunner` | | skip the runner |
 | `--skip-oidc` | `-SkipOidc` | | skip the Entra app and federated credential |
 | `--set-github-variables` | `-SetGitHubVariables` | | write the variables with `gh` |
 | `-y` | `-Yes` | | no prompt |
 
-Steps: resolve the GitHub OIDC subject, register the resource providers, create the resource group, create the Entra app registration `agent-ready-check-github` with a federated credential for the repository's `production` environment and Contributor on the resource group, deploy `infra/main.bicep`, check the CNAME and bind the custom domain if it is live, then print the DNS record and the GitHub variables. Safe to re-run. No secret is printed or written.
+Steps: resolve the GitHub OIDC subject, register the resource providers, create the resource group, create the Entra app registration `<name>-github` (default `is-ai-native-github`) with a federated credential for the repository's `production` environment and Contributor on the resource group, deploy `infra/main.bicep`, check the CNAME and bind the custom domain if it is live, then print the DNS record and the GitHub variables. Safe to re-run. No secret is printed or written.
 
-For an apex, first complete TXT ownership validation and DNS cutover using the publishing guide. Then pass `--custom-domain isainative.dev --domain-validation-method dns-txt-token` (PowerShell: `-CustomDomain isainative.dev -DomainValidationMethod dns-txt-token`). The scripts require the Azure hostname binding to be `Ready` before deploying in this mode and preserve the custom origin in the initial deployment. Cloudflare flattens apex CNAMEs, so a literal CNAME lookup is not a valid readiness check for the apex.
+For an apex, first complete TXT ownership validation and DNS cutover using the publishing guide. For the live deployment, pass `--resource-group rg-agent-ready-check --name agent-ready-check --custom-domain isainative.dev --domain-validation-method dns-txt-token` (PowerShell: `-ResourceGroup rg-agent-ready-check -Name agent-ready-check -CustomDomain isainative.dev -DomainValidationMethod dns-txt-token`). The scripts require the Azure hostname binding to be `Ready` before deploying in this mode and preserve the custom origin in the initial deployment. Cloudflare flattens apex CNAMEs, so a literal CNAME lookup is not a valid readiness check for the apex.
 
 The managed function has its own committed `api/package-lock.json`. Both CI and deployment run `npm ci --prefix api --omit=dev` to install its runtime dependency reproducibly.
 
@@ -136,6 +136,6 @@ v0.1.0 ran the whole app in one Azure Container App with a container registry, a
 ## Other ways to run it
 
 - **Node 22+**: `npm ci && npm start` (port 8080; `BROWSER=1` for browser checks with a local Chromium, `REPORTS_DIR=./reports` to keep reports).
-- **Docker**: `docker build -t agent-ready-check . && docker run -p 8080:8080 agent-ready-check` (Playwright base image, browser checks on). The image ignores `X-Forwarded-*` headers by default (`TRUST_PROXY=0`), so a direct `docker run` cannot be spoofed. Behind a reverse proxy that overwrites those headers, set `-e TRUST_PROXY=1` so each visitor gets their own scan and join quota (otherwise everyone shares the proxy's), and set `-e BASE_URL=https://your.host` so report and League links use the public origin. Earlier images defaulted to `TRUST_PROXY=1`; proxied deployments upgrading from them need both settings.
-- **Browser runner alone**: `docker build -f Dockerfile.runner -t agent-ready-check-runner .` then `docker run -p 8080:8080 -e RUNNER_TOKEN=... agent-ready-check-runner`; or `RUNNER_TOKEN=... bash scripts/runner-start.sh` on any small Linux host.
+- **Docker**: `docker build -t is-ai-native . && docker run -p 8080:8080 is-ai-native` (Playwright base image, browser checks on). The image ignores `X-Forwarded-*` headers by default (`TRUST_PROXY=0`), so a direct `docker run` cannot be spoofed. Behind a reverse proxy that overwrites those headers, set `-e TRUST_PROXY=1` so each visitor gets their own scan and join quota (otherwise everyone shares the proxy's), and set `-e BASE_URL=https://your.host` so report and League links use the public origin. Earlier images defaulted to `TRUST_PROXY=1`; proxied deployments upgrading from them need both settings.
+- **Browser runner alone**: `docker build -f Dockerfile.runner -t is-ai-native-runner .` then `docker run -p 8080:8080 -e RUNNER_TOKEN=... is-ai-native-runner`; or `RUNNER_TOKEN=... bash scripts/runner-start.sh` on any small Linux host.
 - **Cloudflare-style Worker + D1**: `npm run build:worker`, then publish `dist/worker/`. Set `BROWSER_RUNNER_URL` and `RUNNER_TOKEN` to use a runner.

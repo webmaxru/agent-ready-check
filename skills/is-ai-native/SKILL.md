@@ -1,14 +1,14 @@
 ---
-name: agent-ready-check
-description: Scan a website for agent-readiness with Agent-Ready Check (113 checks in 13 layers) and turn the findings into fixes. Use it when someone asks whether a site works for AI agents, why an agent cannot use a site, or how to raise an isitagentready level or a Lighthouse Agentic Browsing score.
+name: is-ai-native
+description: Scan a website for agent-readiness with Is AI-Native (113 checks in 13 layers) and turn the findings into fixes. Use it when someone asks whether a site works for AI agents, why an agent cannot use a site, or how to raise an isitagentready level or a Lighthouse Agentic Browsing score.
 license: MIT
 ---
 
-# Agent-Ready Check
+# Is AI-Native
 
-Agent-Ready Check scans one public URL and reports, layer by layer, how well AI agents can find, read and use the site. Every finding has evidence (the request and the response), the reason it matters with a chapter of the book "The Agent-Ready Web" by Maxim Salnikov, a copy-paste fix and a fix prompt for coding agents. The report also shows an isitagentready-compatible level (0 to 5) and a Lighthouse Agentic Browsing view.
+Is AI-Native scans one public URL and reports, layer by layer, how well AI agents can find, read and use the site. Every finding has evidence (the request and the response), the reason it matters with a chapter of the book "The Agent-Ready Web" by Maxim Salnikov, a copy-paste fix and a fix prompt for coding agents. The report also shows an isitagentready-compatible level (0 to 5) and a Lighthouse Agentic Browsing view.
 
-Base URL: https://agent-ready-check.sites.tab.bot
+Base URL: https://isainative.dev
 
 ## When to use it
 
@@ -18,7 +18,7 @@ Base URL: https://agent-ready-check.sites.tab.bot
 
 ## Option 1: MCP (preferred for agents)
 
-Connect to the stateless Streamable HTTP MCP server at `https://agent-ready-check.sites.tab.bot/mcp` (protocol 2026-07-28; 2025-11-25 and 2025-06-18 also work). Tools:
+Connect to the stateless Streamable HTTP MCP server at `https://isainative.dev/mcp` (protocol 2026-07-28; 2025-11-25 and 2025-06-18 also work). Tools:
 
 - `scan_site` {"url": "https://example.com"}: runs a scan (about 10 to 60 seconds) and returns a summary, the report URL and the full report as structured content.
 - `list_checks` {"layer": "crawl"}: the check catalogue, optionally for one layer.
@@ -29,16 +29,16 @@ Connect to the stateless Streamable HTTP MCP server at `https://agent-ready-chec
 
 ```bash
 # JSON report
-curl -s -X POST https://agent-ready-check.sites.tab.bot/api/scan -H 'content-type: application/json' -d '{"url":"https://example.com"}'
+curl -s -X POST https://isainative.dev/api/scan -H 'content-type: application/json' -d '{"url":"https://example.com"}'
 
 # Only the failing and warning checks as Markdown fix prompts, ready for a coding agent
-curl -s -X POST https://agent-ready-check.sites.tab.bot/api/scan -H 'content-type: application/json' -d '{"url":"https://example.com","format":"agent"}'
+curl -s -X POST https://isainative.dev/api/scan -H 'content-type: application/json' -d '{"url":"https://example.com","format":"agent"}'
 
 # One check explained
-curl -s https://agent-ready-check.sites.tab.bot/api/checks/content.markdown-negotiation
+curl -s https://isainative.dev/api/checks/content.markdown-negotiation
 ```
 
-The OpenAPI description is at https://agent-ready-check.sites.tab.bot/openapi.json. Errors are `application/problem+json` (RFC 9457). Scans are rate limited per client (the `RateLimit-Policy` and `RateLimit` headers say how many are left; a 429 carries `Retry-After`). The same URL is served from a 10-minute cache.
+The OpenAPI description is at https://isainative.dev/openapi.json. Errors are `application/problem+json` (RFC 9457). Scans are rate limited per client (the `RateLimit-Policy` and `RateLimit` headers say how many are left; a 429 carries `Retry-After`). The same URL is served from a 10-minute cache.
 
 ## Option 3: CLI (local, CI gates)
 

@@ -25,7 +25,7 @@ test('tools/call scan_site on the service itself', async ({ request }) => {
   const r = await call(request, 'tools/call', { name: 'scan_site', arguments: { url: `${srv.base}/` } }, { 'mcp-name': 'scan_site' });
   const j = await r.json();
   expect(j.result.isError).toBeFalsy();
-  expect(j.result.content[0].text).toMatch(/Agent-Ready score/);
+  expect(j.result.content[0].text).toMatch(/AI-Native score/);
   const id = j.result.structuredContent.id;
   const g = await (await call(request, 'tools/call', { name: 'get_report', arguments: { id } }, { 'mcp-name': 'get_report' })).json();
   expect(g.result.structuredContent.id).toBe(id);

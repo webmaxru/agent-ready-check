@@ -278,7 +278,7 @@ ${Object.entries(keep).map(([k, v]) => `<input type="hidden" name="${esc(k)}" va
  * Full HTML report page.
  * @param {object} report  the scan report (SPEC "Report contract")
  * @param {{ baseUrl?: string, reportId?: string, filter?: object, browserAvailable?: boolean, league?: string }} [o]
- *   league: ready-made HTML for the Agent-Ready League panel (src/league/render.mjs leaguePanel), placed under the score console
+ *   league: ready-made HTML for the AI-Native League panel (src/league/render.mjs leaguePanel), placed under the score console
  *   filter: { role, status[] } (see parseFilter) applied server-side as the hidden attribute, so filters work without JS.
  */
 export function renderReportHtml(report, { baseUrl = '', reportId, filter, browserAvailable = false, league = '' } = {}) {
@@ -322,7 +322,7 @@ ${cs.map((c) => findingHtml(c, report, f)).join('\n')}
   const legend = Object.entries(MATURITY_LABEL).map(([k, v]) => `<li><span class="std std-${k}">${esc(v.label)}</span> ${esc(v.text)}</li>`).join('');
   const share = L.html || L.badge ? `<section class="band share" aria-labelledby="share-h"><h2 id="share-h" class="sh">Share</h2>
 ${L.html ? `<p>Report link, kept 30 days: <a href="${esc(L.html)}">${esc(L.html)}</a></p>` : ''}
-${L.badge ? `<p class="badge"><img src="${esc(L.badge)}" alt="Agent-Ready badge for ${esc(host)}" width="${badgeWidth({ score: report.score, level: iia?.level })}" height="20"></p>${copyBlock('Badge Markdown', `[![Agent-Ready score](${L.badge})](${L.html || L.rescan || L.badge})`)}` : ''}
+${L.badge ? `<p class="badge"><img src="${esc(L.badge)}" alt="AI-Native badge for ${esc(host)}" width="${badgeWidth({ score: report.score, level: iia?.level })}" height="20"></p>${copyBlock('Badge Markdown', `[![AI-Native score](${L.badge})](${L.html || L.rescan || L.badge})`)}` : ''}
 <p>Also as ${L.json ? `<a href="${esc(L.json)}">JSON</a>, ` : ''}${L.markdown ? `<a href="${esc(L.markdown)}">Markdown</a>, ` : ''}${L.prompts ? `<a href="${esc(L.prompts)}">fix prompts</a>` : ''}.</p></section>` : '';
 
   const body = `${scanForm({ value: host, browserAvailable, id: 'rescan', compact: true })}
@@ -331,7 +331,7 @@ ${L.badge ? `<p class="badge"><img src="${esc(L.badge)}" alt="Agent-Ready badge 
 <div>
 <h1 id="sum-h">Agent-readiness of <span class="host">${esc(host)}</span></h1>
 <p class="small">${targetHref ? `<a href="${esc(targetHref)}" rel="nofollow noopener">${esc(target)}</a>` : esc(target)} · <time datetime="${esc(report.scanned_at)}">${esc(String(report.scanned_at || '').replace('T', ' ').slice(0, 16))} UTC</time> · ${esc(fmtMs(report.duration_ms))} · ${esc(report.requests)} requests · ${browserNote}</p>
-<div class="score band-${band(score)}" role="img" aria-label="Agent-Ready score ${score == null ? 'not available' : `${score} out of 100`}"><span class="num">${score == null ? '–' : score}</span><span class="of">/100</span></div>
+<div class="score band-${band(score)}" role="img" aria-label="AI-Native score ${score == null ? 'not available' : `${score} out of 100`}"><span class="num">${score == null ? '–' : score}</span><span class="of">/100</span></div>
 <div class="meter band-${band(score)}" aria-hidden="true">${blocks(20, score == null ? 0 : Math.round(score / 5))}</div>
 <p class="grade">${esc(grade(report.score))}</p>
 <ul class="tally" aria-label="Check results">${tally}</ul>
@@ -383,7 +383,7 @@ export function renderHomeHtml({ baseUrl = '', browserAvailable = false } = {}) 
 <div>
 <p class="kicker">${esc(SITE.checksCount)} checks · ${esc(SITE.layersCount)} layers</p>
 <h1 id="home-h">Check your site for AI agents</h1>
-<p class="lead">Enter an address. Agent-Ready Check reads it the way crawlers, assistants and browser agents do: robots.txt, structured data, Markdown, APIs, MCP, WebMCP and more. Every finding shows the request it rests on and how to fix it.</p>
+<p class="lead">Enter an address. Is AI-Native reads it the way crawlers, assistants and browser agents do: robots.txt, structured data, Markdown, APIs, MCP, WebMCP and more. Every finding shows the request it rests on and how to fix it.</p>
 ${scanForm({ browserAvailable, id: 'scan' })}
 </div>
 <aside class="readout" aria-labelledby="out-h">
@@ -415,7 +415,7 @@ ${ladder(null)}
 </section>
 <section class="leaguecta" aria-labelledby="league-cta-h">
 <h2 id="league-cta-h" class="sh">Play for the top of the board</h2>
-<p>Scored a 62 and want a 90? Join the <a href="/league">Agent-Ready League</a>: every report shows the fixes worth the most points, every re-scan can win XP and achievements, and the leaderboard shows who is the most agent-ready on the web.</p>
+<p>Scored a 62 and want a 90? Join the <a href="/league">AI-Native League</a>: every report shows the fixes worth the most points, every re-scan can win XP and achievements, and the leaderboard shows who is the most agent-ready on the web.</p>
 <p><a class="btn" href="/league">See the leaderboard</a></p>
 </section>
 <section class="term" aria-labelledby="agents-h">

@@ -8,7 +8,7 @@ description: Scan a website for agent-readiness with ${SITE.name} (${SITE.checks
 license: ${SITE.license}
 ---
 
-# Agent-Ready Check
+# ${SITE.name}
 
 ${SITE.name} scans one public URL and reports, layer by layer, how well AI agents can find, read and use the site. Every finding has evidence (the request and the response), the reason it matters with a chapter of the book "${SITE.book}" by ${SITE.author}, a copy-paste fix and a fix prompt for coding agents. The report also shows an isitagentready-compatible level (0 to 5) and a Lighthouse Agentic Browsing view.
 
@@ -28,7 +28,7 @@ Connect to the stateless Streamable HTTP MCP server at \`${base}/mcp\` (protocol
 - \`list_checks\` {"layer": "crawl"}: the check catalogue, optionally for one layer.
 - \`explain_check\` {"id": "content.markdown-negotiation"}: what a check tests, its standard and status, why it matters and how to fix it.
 - \`get_report\` {"id": "<report id>"}: a stored report (kept 30 days).
-- \`get_league\` {"board": "top"} or {"host": "example.com"}: the Agent-Ready League leaderboard or one site's standing.
+- \`get_league\` {"board": "top"} or {"host": "example.com"}: the AI-Native League leaderboard or one site's standing.
 
 ## Option 2: HTTP API
 

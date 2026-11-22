@@ -1,4 +1,4 @@
-// SVG badge: "agent-ready | 87 · L4". Flat and square (the pixel theme: no rounded corners, no gloss), with an accessible title.
+// SVG badge: "ai-native | 87 · L4". Flat and square (the pixel theme: no rounded corners, no gloss), with an accessible title.
 import { esc } from './util.mjs';
 
 const COLORS = [[90, '#1a7f37'], [70, '#4c8a12'], [40, '#b35900'], [0, '#c62828']];
@@ -6,7 +6,7 @@ const COLORS = [[90, '#1a7f37'], [70, '#4c8a12'], [40, '#b35900'], [0, '#c62828'
 const width = (s) => Math.round([...String(s)].reduce((w, ch) => w + (/[il.,:|!']/.test(ch) ? 3.6 : /[mwMW@]/.test(ch) ? 9.5 : /[A-Z0-9]/.test(ch) ? 7.4 : 6.4), 0)) + 12;
 
 /** Pixel width of the badge for these values (for width/height attributes that prevent layout shift). */
-export function badgeWidth({ score = null, level = null, label = 'agent-ready' } = {}) {
+export function badgeWidth({ score = null, level = null, label = 'ai-native' } = {}) {
   return Number(/width="(\d+)"/.exec(renderBadge({ score, level, label }))[1]);
 }
 
@@ -14,7 +14,7 @@ export function badgeWidth({ score = null, level = null, label = 'agent-ready' }
  * @param {{ score?: number|null, level?: number|null, label?: string }} o
  * @returns {string} SVG document
  */
-export function renderBadge({ score = null, level = null, label = 'agent-ready' } = {}) {
+export function renderBadge({ score = null, level = null, label = 'ai-native' } = {}) {
   const s = Number.isFinite(Number(score)) && score !== null ? Math.max(0, Math.min(100, Math.round(Number(score)))) : null;
   const lv = Number.isFinite(Number(level)) && level !== null ? Math.max(0, Math.min(5, Math.round(Number(level)))) : null;
   const value = s === null ? 'not scanned' : `${s}/100${lv === null ? '' : ` · L${lv}`}`;

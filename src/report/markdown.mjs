@@ -18,7 +18,7 @@ export function renderReportMarkdown(report, { baseUrl = '', reportId, format = 
   const lh = report.compat?.lighthouse_agentic;
   const out = [];
   out.push(`# Agent-readiness report: ${mdText(report.final_url || report.url)}`, '');
-  out.push(`- Agent-Ready score: **${report.score}/100**`);
+  out.push(`- AI-Native score: **${report.score}/100**`);
   if (iia) out.push(`- isitagentready-compatible level: **${iia.level} (${mdText(iia.level_name)})**${iia.next_level ? `; next: Level ${iia.next_level.target} needs ${iia.next_level.requirements.map(mdText).join(', ')}` : ''}`);
   if (lh) out.push(`- Lighthouse Agentic view: ${lh.score === null ? 'not scored' : `${Math.round(lh.score * 100)}%`} (${lh.passed} of ${lh.scored} scored audits pass)`);
   out.push(`- Scanned ${mdText(report.scanned_at)} in ${Math.round((report.duration_ms || 0) / 100) / 10} s, ${report.requests} requests, ${report.mode?.browser ? 'with a real browser' : 'without a browser (browser-only checks skipped)'}`);
@@ -64,7 +64,7 @@ export function renderReportMarkdown(report, { baseUrl = '', reportId, format = 
     }
     out.push('');
   }
-  if (L.badge) out.push('## Badge', '', mdFence(`[![agent-ready](${L.badge})](${L.html || L.rescan})`, 'markdown'), '');
+  if (L.badge) out.push('## Badge', '', mdFence(`[![AI-Native score](${L.badge})](${L.html || L.rescan})`, 'markdown'), '');
   out.push(`---`, `Checks and fixes are based on the book *${BOOK.title}* by ${BOOK.author} and its demos (${BOOK.demos}).`, '');
   return out.join('\n');
 }
@@ -75,7 +75,7 @@ export function renderFixPrompts(report, { baseUrl = '', reportId } = {}) {
   const target = report.final_url || report.url;
   const L = reportLinks(baseUrl, reportId || report.id, hostOf(target));
   const out = [`# Make ${mdText(target)} more agent-ready`, '',
-    `You are working on the code of the site ${mdText(target)}. An agent-readiness scan (Agent-Ready Check, score ${report.score}/100${report.compat?.isitagentready ? `, isitagentready-compatible Level ${report.compat.isitagentready.level}` : ''}) found ${todo.length} issue(s). Fix them in this order. For each one, change the code, then verify it as described. Do not invent content: where a fix needs facts about the business (prices, policies, contact details), leave a clearly marked TODO for a person.`, ''];
+    `You are working on the code of the site ${mdText(target)}. An agent-readiness scan (Is AI-Native, score ${report.score}/100${report.compat?.isitagentready ? `, isitagentready-compatible Level ${report.compat.isitagentready.level}` : ''}) found ${todo.length} issue(s). Fix them in this order. For each one, change the code, then verify it as described. Do not invent content: where a fix needs facts about the business (prices, policies, contact details), leave a clearly marked TODO for a person.`, ''];
   if (!todo.length) out.push('No failing or warning checks. Nothing to do.', '');
   todo.forEach((c, i) => {
     out.push(`## ${i + 1}. ${mdText(c.title)} (\`${c.id}\`, ${c.status})`, '', `Finding: ${mdText(c.message)}`, '');

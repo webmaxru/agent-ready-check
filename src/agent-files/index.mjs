@@ -15,7 +15,7 @@ export const PAGES = [
   { path: '/', title: SITE.name, md: '/index.md', updated: 'home', summary: 'Scan a site and read the report.' },
   { path: '/docs', title: 'API, MCP, WebMCP and CLI', md: '/docs.md', updated: 'docs', summary: 'How agents and people use the service: HTTP API, MCP tools, WebMCP tool, CLI, badges.' },
   { path: '/checks', title: 'The checks', md: '/checks.md', updated: 'checks', summary: `All ${SITE.checksCount} checks by layer, with their standard and its status.` },
-  { path: '/league', title: 'Agent-Ready League', md: '/league.md', updated: 'league', summary: 'The leaderboard of the most agent-ready websites: boards, divisions, XP and achievements.' },
+  { path: '/league', title: 'AI-Native League', md: '/league.md', updated: 'league', summary: 'The leaderboard of the most agent-ready websites: boards, divisions, XP and achievements.' },
   { path: '/privacy', title: 'Privacy', md: '/privacy.md', updated: 'privacy', summary: 'What the service stores and for how long.' },
   { path: '/terms', title: 'Terms of use', md: '/terms.md', updated: 'privacy', summary: 'Fair use of the free scanner and its API.' },
 ];
@@ -66,7 +66,7 @@ export function llmsTxt(base) {
     `- [MCP server card](${b}/mcp/server-card): the MCP endpoint is ${b}/mcp (stateless Streamable HTTP, POST only), tools scan_site, list_checks, explain_check, get_report, get_league.`,
     `- [HTTP API (OpenAPI 3.1)](${b}/openapi.json): POST /api/scan with {"url": "..."}; format "agent" returns only the fixes as Markdown prompts.`,
     `- [Agent Skill](${b}/.well-known/agent-skills/${SKILL_NAME}/SKILL.md): step-by-step instructions for agents.`,
-    `- [Agent-Ready League](${b}/league.md): the leaderboard of top agent-ready websites; JSON at ${b}/api/league, one site at ${b}/api/league/{host}.`,
+    `- [AI-Native League](${b}/league.md): the leaderboard of top agent-ready websites; JSON at ${b}/api/league, one site at ${b}/api/league/{host}.`,
     `- [API, MCP, WebMCP and CLI docs](${b}/docs.md): every surface with examples.`,
     '',
     '## Reference',
@@ -139,7 +139,7 @@ Stateless Streamable HTTP at ${b}/mcp. Protocol 2026-07-28 (with \`server/discov
 | \`list_checks\` | optional \`layer\` | Lists the checks |
 | \`explain_check\` | \`id\` | Explains one check: standard, status, why, fix |
 | \`get_report\` | \`id\` | Returns a stored report |
-| \`get_league\` | \`board\`, \`host\`, \`limit\` (all optional) | Reads the Agent-Ready League: a board, or one site's standing |
+| \`get_league\` | \`board\`, \`host\`, \`limit\` (all optional) | Reads the AI-Native League: a board, or one site's standing |
 
 \`\`\`bash
 curl -s ${b}/mcp -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \\
@@ -168,7 +168,7 @@ The exit code is 1 when \`--fail-under\` or \`--level-at-least\` is not met, so 
 ## Badges
 
 \`\`\`markdown
-![Agent-Ready Check](${b}/badge/example.com.svg)
+![Is AI-Native score](${b}/badge/example.com.svg)
 \`\`\`
 
 A badge shows the latest stored report for the host. It never starts a scan.
@@ -204,9 +204,9 @@ ${SITE.name} is a scanner. This page says what it keeps.
 
 ## Scanning
 
-- The scanner identifies itself with the user agent \`AgentReadyCheck\` and a link to its source code.
+- The scanner identifies itself with the user agent \`IsAINative\` and a link to its source code.
 - It refuses private, loopback and link-local addresses, follows at most 5 redirects, caps every response and stops after 120 requests per scan.
-- For crawl-type reads (sitemap samples, llms.txt link checks) it obeys robots.txt for the token \`AgentReadyCheck\`.
+- For crawl-type reads (sitemap samples, llms.txt link checks) it obeys robots.txt for the token \`IsAINative\`.
 
 Questions: ${SITE.issues}
 `;

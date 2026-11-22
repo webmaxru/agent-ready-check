@@ -15,8 +15,8 @@ const SCHEMA = [
 ];
 
 function schema(db) {
-  if (!db.__arcSchema) db.__arcSchema = db.batch(SCHEMA.map((s) => db.prepare(s))).catch((e) => { db.__arcSchema = null; throw e; });
-  return db.__arcSchema;
+  if (!db.__isAINativeSchema) db.__isAINativeSchema = db.batch(SCHEMA.map((s) => db.prepare(s))).catch((e) => { db.__isAINativeSchema = null; throw e; });
+  return db.__isAINativeSchema;
 }
 
 /** League standings on D1: one row per host, a version column makes each read-modify-write a compare-and-swap. */

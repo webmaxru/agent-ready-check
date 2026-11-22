@@ -1,4 +1,4 @@
-// E2E for the Agent-Ready League: the real app (fake scan, in-memory store) in a real browser.
+// E2E for the AI-Native League: the real app (fake scan, in-memory store) in a real browser.
 import { test, expect } from '@playwright/test';
 import { findChromium, collectBrowser } from '../../src/browser/collect.mjs';
 import { createApp } from '../../server/app.mjs';
