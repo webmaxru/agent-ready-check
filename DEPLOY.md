@@ -8,10 +8,10 @@ Other ways to run it (Node, Docker, a Cloudflare-style Worker) are at the end.
 
 Deployed on 18 November 2026 to `rg-agent-ready-check` in West Europe. The live resources keep the names they were created with before the project was renamed to Is AI-Native (resource group `rg-agent-ready-check`, Static Web App `agent-ready-check`, runner `agent-ready-check-runner`, Entra app `agent-ready-check-github`); new deployments default to `is-ai-native`. To re-run setup against the live deployment, pass `--resource-group rg-agent-ready-check --name agent-ready-check` (PowerShell: `-ResourceGroup rg-agent-ready-check -Name agent-ready-check`).
 
-- Site: https://kind-pond-004d16e03.8.azurestaticapps.net
+- Site: https://isainative.dev, with the alias https://www.isainative.dev. The default host name https://kind-pond-004d16e03.8.azurestaticapps.net still works.
 - GitHub Actions deploys the site, API and browser runner on pushes to `main`, using OIDC.
 - Live verification covered browser-enabled scans, Blob Storage report persistence and shareable report pages.
-- Planned domain: **https://isainative.dev**. The existing repository scanner must first move to **https://repo.isainative.dev**. Cutover is pending Cloudflare access; the current apex and `www` bindings are preserved. Follow the [ordered domain migration procedure](docs/PUBLISHING.md#domain-migration-isainativedev-and-repoisainativedev), including TXT validation for the apex.
+- Custom domains: on 19 November 2026 the apex and `www` moved here from the repository scanner, which now serves **https://repo.isainative.dev**. The apex uses TXT validation; `www` uses CNAME validation. Both are DNS-only Cloudflare CNAMEs to the default host name. `PUBLIC_BASE_URL` and runtime `BASE_URL` are `https://isainative.dev`. See the [domain migration record](docs/PUBLISHING.md#domain-migration-isainativedev-and-repoisainativedev).
 
 ## Architecture on Azure
 
@@ -19,7 +19,7 @@ Deployed on 18 November 2026 to `rg-agent-ready-check` in West Europe. The live 
 visitor / agent
       |
       v
-Azure Static Web Apps (Free plan, global edge, free TLS certificate, planned custom domain isainative.dev)
+Azure Static Web Apps (Free plan, global edge, free TLS certificates, custom domains isainative.dev and www.isainative.dev)
   |-- /assets/*  -> static files (CSS, JS, pixel font, favicon) from the Static Web Apps CDN
   |-- /api/*     -> managed Azure Function "site" (Node 22)
   `-- every other path -> rewritten to /api/__site -> the same function
@@ -48,7 +48,7 @@ Azure Static Web Apps (Free plan, global edge, free TLS certificate, planned cus
 
 Sources: [Static Web Apps plans](https://learn.microsoft.com/en-us/azure/static-web-apps/plans) and [pricing](https://azure.microsoft.com/en-us/pricing/details/app-service/static/), read 5 November 2026.
 
-Free is enough: the API runs as **managed functions**, which every plan includes, and one custom domain is needed. Standard would only be needed for a linked Function App (bring your own functions), managed identity in the API, private endpoints or the SLA. The plan is one parameter (`swaSku`, or the `-Sku` / `--sku` flag, or the Deploy infra workflow input) if that changes.
+Free is enough: the API runs as **managed functions**, which every plan includes, and the two custom domains in use (the apex and `www`) are the Free plan's limit. Standard would only be needed for a linked Function App (bring your own functions), managed identity in the API, private endpoints or the SLA. The plan is one parameter (`swaSku`, or the `-Sku` / `--sku` flag, or the Deploy infra workflow input) if that changes.
 
 Managed-function limits that shape the design ([API overview](https://learn.microsoft.com/en-us/azure/static-web-apps/apis-overview), [Functions in Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/apis-functions), read 5 Nov 2026): HTTP triggers only, the `/api` prefix is fixed, and **each API request may last at most 45 seconds**. The function therefore gives each scan a 30-second network budget (`SCAN_TIMEOUT_MS`) and the browser runner the same, so a scan answers before the limit.
 
@@ -124,6 +124,8 @@ For GitHub OIDC setup, sign in with `gh auth login` first, or supply `--oidc-sub
 Steps: resolve the GitHub OIDC subject, register the resource providers, create the resource group, create the Entra app registration `<name>-github` (default `is-ai-native-github`) with a federated credential for the repository's `production` environment and Contributor on the resource group, deploy `infra/main.bicep`, check the CNAME and bind the custom domain if it is live, then print the DNS record and the GitHub variables. Safe to re-run. No secret is printed or written.
 
 For an apex, first complete TXT ownership validation and DNS cutover using the publishing guide. For the live deployment, pass `--resource-group rg-agent-ready-check --name agent-ready-check --custom-domain isainative.dev --domain-validation-method dns-txt-token` (PowerShell: `-ResourceGroup rg-agent-ready-check -Name agent-ready-check -CustomDomain isainative.dev -DomainValidationMethod dns-txt-token`). The scripts require the Azure hostname binding to be `Ready` before deploying in this mode and preserve the custom origin in the initial deployment. Cloudflare flattens apex CNAMEs, so a literal CNAME lookup is not a valid readiness check for the apex.
+
+The scripts bind only the main custom domain. The **Deploy infra** workflow also binds the `www.isainative.dev` alias (input `alias_domain`, Bicep parameter `aliasDomain`) with CNAME validation after checking its DNS-only CNAME. Re-running either keeps existing bindings, because deployments are incremental.
 
 The managed function has its own committed `api/package-lock.json`. Both CI and deployment run `npm ci --prefix api --omit=dev` to install its runtime dependency reproducibly.
 

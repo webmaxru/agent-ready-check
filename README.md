@@ -4,7 +4,7 @@ Check how ready a website is for AI agents. **113 checks in 13 layers**, from th
 
 It is built on the book **"The Agent-Ready Web"** by Maxim Salnikov and its demos ([webmaxru/agent-ready-web-demos](https://github.com/webmaxru/agent-ready-web-demos), MIT): every check cites the chapter that explains it and the standard behind it, with that standard's status (RFC, W3C Recommendation, draft, vendor proposal), so you do not over-invest in drafts.
 
-> **Live:** https://kind-pond-004d16e03.8.azurestaticapps.net on Azure Static Web Apps. The planned production home is **https://isainative.dev**, with the repository-readiness scanner moving to **https://repo.isainative.dev**. DNS cutover is pending; see [DEPLOY.md](DEPLOY.md) and [docs/PUBLISHING.md](docs/PUBLISHING.md#domain-migration-isainativedev-and-repoisainativedev).
+> **Live:** https://isainative.dev (alias https://www.isainative.dev) on Azure Static Web Apps. The repository-readiness scanner that used to serve the apex is now at **https://repo.isainative.dev**. See [DEPLOY.md](DEPLOY.md) and the [domain migration record](docs/PUBLISHING.md#domain-migration-isainativedev-and-repoisainativedev).
 
 ## Compared with isitagentready.com
 
