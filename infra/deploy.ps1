@@ -11,18 +11,22 @@
   OWNER/REPO, environment "production", with Contributor on the resource group. No secret is created for GitHub;
   the workflows sign in with OIDC. At the end it prints the GitHub repository variables to set.
 
-  Runs in Azure Cloud Shell (PowerShell) as is, and in PowerShell 7+ or Windows PowerShell 5.1 with the Azure CLI.
+  Runs in Azure Cloud Shell (PowerShell), and in PowerShell 7+ or Windows PowerShell 5.1 with the Azure CLI.
+  GitHub OIDC discovery needs gh signed in, or an explicit -OidcSubject.
   Bash twin: infra/deploy.sh.
 
 .EXAMPLE
-  ./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check -CustomDomain agent.isainative.dev
+  ./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check -CustomDomain isainative.dev -DomainValidationMethod dns-txt-token
 .EXAMPLE
   ./infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check -NoBrowserRunner -Yes
 #>
 [CmdletBinding()]
 param(
   [string]$GitHubRepo = '',
+  [string]$OidcSubject = '',
   [string]$CustomDomain = '',
+  [ValidateSet('cname-delegation', 'dns-txt-token')]
+  [string]$DomainValidationMethod = 'cname-delegation',
   [string]$ResourceGroup = 'rg-agent-ready-check',
   [string]$Location = 'westeurope',
   [ValidateSet('westeurope', 'eastus2', 'centralus', 'westus2', 'eastasia')]
@@ -64,17 +68,41 @@ function Invoke-Az {
   param([Parameter(Mandatory = $true)][string[]]$Arguments, [switch]$AllowFail)
   $prev = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
-  try { $out = & az @Arguments 2>&1; $code = $LASTEXITCODE } finally { $ErrorActionPreference = $prev }
+  $stderr = [System.IO.Path]::GetTempFileName()
+  try {
+    $out = & az @Arguments 2>$stderr
+    $code = $LASTEXITCODE
+    $errText = [System.IO.File]::ReadAllText($stderr).Trim()
+  } finally {
+    Remove-Item -Force $stderr
+    $ErrorActionPreference = $prev
+  }
   $text = (@($out) | ForEach-Object { "$_" }) -join "`n"
   if ($code -ne 0) {
     if ($AllowFail) { return $null }
-    throw ("az {0} failed: {1}" -f ($Arguments[0..1] -join ' '), $text)
+    throw ("az {0} failed: {1}`n{2}" -f ($Arguments[0..1] -join ' '), $text, $errText)
   }
+  if ($errText) { Write-Warning $errText }
   return $text.Trim()
 }
 
 if (-not $SkipOidc -and $GitHubRepo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') {
   Exit-WithHint '-GitHubRepo OWNER/REPO is required for the GitHub sign-in' './infra/deploy.ps1 -GitHubRepo webmaxru/agent-ready-check (or -SkipOidc)'
+}
+if (-not $SkipOidc) {
+  if (-not $OidcSubject) {
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+      Exit-WithHint 'gh is required to discover the repository OIDC subject' 'install and sign in to gh, or pass -OidcSubject with the exact production subject from GitHub'
+    }
+    $prefix = & gh api "repos/$GitHubRepo/actions/oidc/customization/sub" --jq 'if .use_default then .sub_claim_prefix else empty end'
+    if ($LASTEXITCODE -ne 0 -or -not $prefix) {
+      Exit-WithHint 'could not discover the default GitHub OIDC subject' 'sign in with gh auth login, or pass -OidcSubject with the exact production subject from GitHub'
+    }
+    $OidcSubject = "${prefix}:environment:$EnvironmentName"
+  }
+  if ($OidcSubject -notmatch '^[A-Za-z0-9_./:@%-]+$') {
+    Exit-WithHint '-OidcSubject contains unsupported characters' 'copy the exact subject claim from the azure/login workflow log'
+  }
 }
 $CustomDomain = ($CustomDomain.ToLowerInvariant() -replace '^https?://', '' -replace '/.*$', '').TrimEnd('.')
 $OwnerLc = ''
@@ -122,11 +150,12 @@ if (-not $SkipOidc) {
   } else { Write-Ok "app registration $appDisplay exists" }
   $spObjectId = Invoke-Az @('ad', 'sp', 'list', '--filter', "appId eq '$clientId'", '--query', '[0].id', '-o', 'tsv')
   if (-not $spObjectId) { $spObjectId = Invoke-Az @('ad', 'sp', 'create', '--id', $clientId, '--query', 'id', '-o', 'tsv') }
-  $subject = "repo:${GitHubRepo}:environment:$EnvironmentName"
+  $subject = $OidcSubject
   $count = Invoke-Az @('ad', 'app', 'federated-credential', 'list', '--id', $clientId, '--query', "[?subject=='$subject'] | length(@)", '-o', 'tsv')
   if ($count -eq '0') {
     $credName = ("github-$EnvironmentName-$GitHubRepo" -replace '[/.]', '-')
     if ($credName.Length -gt 100) { $credName = $credName.Substring(0, 100) }
+    $credId = Invoke-Az @('ad', 'app', 'federated-credential', 'list', '--id', $clientId, '--query', "[?name=='$credName'] | [0].id", '-o', 'tsv')
     $cred = [ordered]@{
       name        = $credName
       issuer      = 'https://token.actions.githubusercontent.com'
@@ -137,7 +166,11 @@ if (-not $SkipOidc) {
     $tmp = [System.IO.Path]::GetTempFileName()
     try {
       [System.IO.File]::WriteAllText($tmp, ($cred | ConvertTo-Json -Compress))
-      Invoke-Az @('ad', 'app', 'federated-credential', 'create', '--id', $clientId, '--parameters', "@$tmp", '-o', 'none') | Out-Null
+      if ($credId) {
+        Invoke-Az @('ad', 'app', 'federated-credential', 'update', '--id', $clientId, '--federated-credential-id', $credId, '--parameters', "@$tmp", '-o', 'none') | Out-Null
+      } else {
+        Invoke-Az @('ad', 'app', 'federated-credential', 'create', '--id', $clientId, '--parameters', "@$tmp", '-o', 'none') | Out-Null
+      }
     } finally { Remove-Item -Force $tmp -ErrorAction SilentlyContinue }
     Write-Ok "federated credential for $subject"
   } else { Write-Ok "federated credential for $subject exists" }
@@ -164,7 +197,7 @@ function Invoke-Deploy([string]$Domain) {
   $runnerFlag = 'false'
   if ($Runner) { $runnerFlag = 'true' }
   $json = Invoke-Az @('deployment', 'group', 'create', '-g', $ResourceGroup, '-n', $deployName, '-f', (Join-Path $InfraDir 'main.bicep'),
-    '-p', "appName=$Name", "location=$Location", "swaLocation=$SwaLocation", "swaSku=$Sku", "customDomain=$Domain",
+    '-p', "appName=$Name", "location=$Location", "swaLocation=$SwaLocation", "swaSku=$Sku", "customDomain=$Domain", "domainValidationMethod=$DomainValidationMethod",
     "deployBrowserRunner=$runnerFlag", "runnerImage=$RunnerImage", "deployerPrincipalId=$spObjectId",
     "leagueAdminToken=$LeagueAdminToken", "leagueRemovalUrl=$LeagueRemovalUrl",
     '--query', 'properties.outputs', '-o', 'json')
@@ -172,9 +205,16 @@ function Invoke-Deploy([string]$Domain) {
 }
 
 Write-Step 'Deploy infra/main.bicep'
-# A domain is bound only when DNS already points at the app, so the first pass deploys without it (the public origin
-# is then the default host name; it switches to https://<domain> once the domain is bound).
-$out = Invoke-Deploy ''
+$initialDomain = ''
+if ($CustomDomain -and $DomainValidationMethod -eq 'dns-txt-token') {
+  $ready = Invoke-Az @('staticwebapp', 'hostname', 'list', '-n', $Name, '-g', $ResourceGroup,
+    '--query', "[?domainName=='$CustomDomain' && status=='Ready'] | length(@)", '-o', 'tsv')
+  if ($ready -ne '1') {
+    Exit-WithHint "TXT-validated domain $CustomDomain is not Ready" 'finish Azure ownership validation and DNS cutover first (docs/PUBLISHING.md)'
+  }
+  $initialDomain = $CustomDomain
+}
+$out = Invoke-Deploy $initialDomain
 $swaName = $out.staticWebAppName.value
 $swaHost = $out.defaultHostname.value
 $runnerApp = $out.runnerAppName.value
@@ -182,8 +222,8 @@ $origin = $out.publicOrigin.value
 Write-Ok "Static Web App $swaName at https://$swaHost"
 if ($runnerApp) { Write-Ok ("browser runner {0} ({1})" -f $runnerApp, $out.runnerFqdn.value) }
 
-$bound = $false
-if ($CustomDomain) {
+$bound = [bool]$initialDomain
+if ($CustomDomain -and -not $bound) {
   Write-Step "Custom domain $CustomDomain"
   $cname = ''
   if (Get-Command Resolve-DnsName -ErrorAction SilentlyContinue) {
@@ -212,10 +252,13 @@ if ($CustomDomain) {
 
 Write-Step 'Done'
 $hostLabel = 'your subdomain'
-if ($CustomDomain) { $hostLabel = $CustomDomain.Split('.')[0] }
+if ($CustomDomain) { $hostLabel = $CustomDomain }
 Write-Host ''
 Write-Host 'DNS record to add at the registrar of your domain:'
 Write-Host ("  Type CNAME   Host {0}   Value {1}   TTL 3600" -f $hostLabel, $swaHost)
+if ($DomainValidationMethod -eq 'dns-txt-token') {
+  Write-Host '  For an apex in Cloudflare use Name @, DNS only, and keep the Azure verification TXT record.'
+}
 Write-Host ''
 Write-Host 'GitHub repository variables (Settings > Secrets and variables > Actions > Variables):'
 $vars = [ordered]@{

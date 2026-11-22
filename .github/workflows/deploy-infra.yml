@@ -8,9 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       custom_domain:
-        description: Custom domain to bind (its CNAME must already point at the Static Web App)
+        description: Custom domain (configure DNS and complete TXT validation first for an apex)
         required: false
-        default: agent.isainative.dev
+        default: isainative.dev
+      validation_method:
+        description: Apex domains require dns-txt-token
+        type: choice
+        options: [dns-txt-token, cname-delegation]
+        default: dns-txt-token
       swa_sku:
         description: Static Web Apps plan
         type: choice
@@ -41,21 +46,35 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - name: Check DNS before binding the domain
+      - name: Check domain readiness
         if: inputs.custom_domain != ''
+        env:
+          CUSTOM_DOMAIN: ${{ inputs.custom_domain }}
+          VALIDATION_METHOD: ${{ inputs.validation_method }}
         run: |
+          set -euo pipefail
           host="$(az staticwebapp show -n "${{ vars.AZURE_STATIC_WEB_APP }}" -g "${{ vars.AZURE_RESOURCE_GROUP }}" --query defaultHostname -o tsv)"
-          cname="$(dig +short CNAME "${{ inputs.custom_domain }}" | sed 's/\.$//')"
-          echo "CNAME ${{ inputs.custom_domain }} -> ${cname:-missing} (expected $host)" | tee -a "$GITHUB_STEP_SUMMARY"
-          [ "$cname" = "$host" ] || { echo "::error::Add the CNAME record first (docs/PUBLISHING.md, DNS)"; exit 1; }
+          if [ "$VALIDATION_METHOD" = dns-txt-token ]; then
+            ready="$(az staticwebapp hostname list -n "${{ vars.AZURE_STATIC_WEB_APP }}" -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --query "[?domainName=='$CUSTOM_DOMAIN' && status=='Ready'] | length(@)" -o tsv)"
+            [ "$ready" = 1 ] || { echo "::error::Finish TXT ownership validation and HTTPS binding first (docs/PUBLISHING.md)"; exit 1; }
+            curl --fail --silent --show-error --max-time 60 "https://$CUSTOM_DOMAIN/api/health" |
+              python3 -c 'import json,sys; h=json.load(sys.stdin); assert h.get("runtime") == "azure" and h.get("status") == "ok" and h.get("store") == "azure-blob", "DNS does not reach Agent-Ready Check"'
+          else
+            cname="$(dig +short CNAME "$CUSTOM_DOMAIN" | sed 's/\.$//')"
+            echo "CNAME $CUSTOM_DOMAIN -> ${cname:-missing} (expected $host)" | tee -a "$GITHUB_STEP_SUMMARY"
+            [ "$cname" = "$host" ] || { echo "::error::Add the DNS-only CNAME record first (docs/PUBLISHING.md)"; exit 1; }
+          fi
       - name: Deploy infra/main.bicep
         env:
           LEAGUE_ADMIN_TOKEN: ${{ secrets.LEAGUE_ADMIN_TOKEN }}
           LEAGUE_REMOVAL_URL: ${{ vars.LEAGUE_REMOVAL_URL }}
+          CUSTOM_DOMAIN: ${{ inputs.custom_domain }}
+          VALIDATION_METHOD: ${{ inputs.validation_method }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/agent-ready-check-runner:latest"
           az deployment group create -g "${{ vars.AZURE_RESOURCE_GROUP }}" -n "gh-${{ github.run_id }}" -f infra/main.bicep \
-            -p appName="${{ vars.AZURE_STATIC_WEB_APP }}" swaSku="${{ inputs.swa_sku }}" customDomain="${{ inputs.custom_domain }}" \
+            -p appName="${{ vars.AZURE_STATIC_WEB_APP }}" swaSku="${{ inputs.swa_sku }}" customDomain="$CUSTOM_DOMAIN" domainValidationMethod="$VALIDATION_METHOD" \
                deployBrowserRunner=${{ inputs.browser_runner }} runnerImage="$image" \
                leagueAdminToken="$LEAGUE_ADMIN_TOKEN" leagueRemovalUrl="$LEAGUE_REMOVAL_URL" \
             --query properties.outputs -o json | tee outputs.json

@@ -1,5 +1,5 @@
 // Build the Azure Static Web Apps deployment:
-//   node scripts/build-azure.mjs [--base-url https://agent.isainative.dev]
+//   node scripts/build-azure.mjs [--base-url https://isainative.dev]
 // Output
 //   dist/azure/web/     the static app: /assets/* (CSS, JS, fonts, favicon), a fallback index.html and
 //                       staticwebapp.config.json (every other path is rewritten to the managed function)

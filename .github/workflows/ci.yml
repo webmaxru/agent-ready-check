@@ -111,6 +111,8 @@ jobs:
       - run: npm run build:azure -- --base-url https://ci.example
       - name: Smoke-test the function bundle
         run: node scripts/smoke-azure-bundle.mjs
+      - name: Install the function's runtime dependency
+        run: npm ci --prefix api --omit=dev --no-audit --no-fund
 
   runner-image:
     # The browser runner image used by the Azure deployment: build it, start it, run one real browser job.
@@ -149,3 +151,6 @@ jobs:
           if ($errs.Count) { $errs | ForEach-Object { $_.ToString() }; exit 1 }
           $bad = @([System.IO.File]::ReadAllBytes((Resolve-Path ./infra/deploy.ps1)) | Where-Object { $_ -gt 127 }).Count
           if ($bad) { "non-ASCII bytes: $bad"; exit 1 }
+      - name: PowerShell deployment helper tests
+        shell: pwsh
+        run: ./test/infra/deploy.test.ps1
