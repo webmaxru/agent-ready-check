@@ -70,6 +70,13 @@ param rateLimit int = 10
 @description('Rate-limit window in seconds.')
 param rateWindowSeconds int = 600
 
+@description('****** for League moderation routes. Empty disables moderation.')
+@secure()
+param leagueAdminToken string = ''
+
+@description('Optional URL where site owners can request removal from the League.')
+param leagueRemovalUrl string = ''
+
 @description('Object id of the GitHub Actions service principal (Entra app). When set, it gets Contributor on this resource group so the workflows can deploy. Needs Owner or User Access Administrator to assign.')
 param deployerPrincipalId string = ''
 
@@ -102,6 +109,15 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
 resource reportsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: blobService
   name: 'reports'
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+// League standings: one board.json blob, kept in its own container so the 30-day report lifecycle rule below never touches it.
+resource leagueContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobService
+  name: 'league'
   properties: {
     publicAccess: 'None'
   }
@@ -243,6 +259,8 @@ resource appSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
     RATE_LIMIT: string(rateLimit)
     RATE_WINDOW: string(rateWindowSeconds)
     SCAN_TIMEOUT_MS: '30000'
+    LEAGUE_ADMIN_TOKEN: leagueAdminToken
+    LEAGUE_REMOVAL_URL: leagueRemovalUrl
   }
 }
 

@@ -1,5 +1,6 @@
 // In-memory report store (tests, CLI, single-process servers). Same interface as fs/d1.
 import { RETENTION_MS, newId, hostOf, normHost } from './common.mjs';
+import { memoryLeague } from '../league/store.mjs';
 
 export function memoryStore({ retentionMs = RETENTION_MS, max = 500, now = () => Date.now() } = {}) {
   const items = new Map(); // id -> { report, at, host, url }
@@ -10,6 +11,7 @@ export function memoryStore({ retentionMs = RETENTION_MS, max = 500, now = () =>
   };
   return {
     kind: 'memory',
+    league: memoryLeague({ now }),
     async put(report) {
       prune();
       const id = report.id || newId();

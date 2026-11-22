@@ -22,6 +22,9 @@ test('robots.txt: valid RFC 9309, named AI groups, Content-Signal in every group
   assert.equal(isAllowed(p, 'GPTBot', '/').allowed, true);
   assert.equal(isAllowed(p, 'OAI-SearchBot', '/docs').allowed, true);
   assert.equal(isAllowed(p, 'SomeBot', '/api/scan').allowed, false, 'crawlers do not start scans');
+  assert.equal(isAllowed(p, 'SomeBot', '/league/join').allowed, false, 'crawlers do not submit League entries');
+  assert.equal(isAllowed(p, 'SomeBot', '/league/join.me').allowed, true, 'similarly named profiles remain crawlable');
+  assert.equal(isAllowed(p, 'SomeBot', '/api/league').allowed, true, 'read-only League data remains crawlable');
   assert.equal(isAllowed(p, 'ChatGPT-User', '/scan').allowed, true, 'assistants acting for a person may');
 });
 
@@ -91,7 +94,7 @@ test('MCP server card has a flat name, version, remotes with our protocols and c
   assert.equal(c.remotes[0].url, `${BASE}/mcp`);
   assert.deepEqual(c.remotes[0].supportedProtocolVersions, files.MCP_PROTOCOLS);
   assert.ok(c.capabilities.tools);
-  assert.equal(TOOLS.length, 4);
+  assert.equal(TOOLS.length, 5);
 });
 
 test('Agent Skills index v0.2.0: digest is the sha256 of SKILL.md as served', async () => {

@@ -14,7 +14,7 @@ export const SITE = {
   author: 'Maxim Salnikov',
   license: 'MIT',
   // Content dates for sitemap lastmod (W3C datetime). Update when the page content changes.
-  updated: { home: '2026-11-03', docs: '2026-11-03', checks: catalog.checked, privacy: '2026-11-03' },
+  updated: { home: '2026-11-03', docs: '2026-11-03', checks: catalog.checked, privacy: '2026-11-03', league: '2026-11-17' },
   checksCount: catalog.checks.length,
   layersCount: catalog.layers.length,
   iiaChecks: 23,

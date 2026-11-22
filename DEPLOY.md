@@ -136,6 +136,6 @@ v0.1.0 ran the whole app in one Azure Container App with a container registry, a
 ## Other ways to run it
 
 - **Node 22+**: `npm ci && npm start` (port 8080; `BROWSER=1` for browser checks with a local Chromium, `REPORTS_DIR=./reports` to keep reports).
-- **Docker**: `docker build -t agent-ready-check . && docker run -p 8080:8080 agent-ready-check` (Playwright base image, browser checks on).
+- **Docker**: `docker build -t agent-ready-check . && docker run -p 8080:8080 agent-ready-check` (Playwright base image, browser checks on). The image ignores `X-Forwarded-*` headers by default (`TRUST_PROXY=0`), so a direct `docker run` cannot be spoofed. Behind a reverse proxy that overwrites those headers, set `-e TRUST_PROXY=1` so each visitor gets their own scan and join quota (otherwise everyone shares the proxy's), and set `-e BASE_URL=https://your.host` so report and League links use the public origin. Earlier images defaulted to `TRUST_PROXY=1`; proxied deployments upgrading from them need both settings.
 - **Browser runner alone**: `docker build -f Dockerfile.runner -t agent-ready-check-runner .` then `docker run -p 8080:8080 -e RUNNER_TOKEN=... agent-ready-check-runner`; or `RUNNER_TOKEN=... bash scripts/runner-start.sh` on any small Linux host.
 - **Cloudflare-style Worker + D1**: `npm run build:worker`, then publish `dist/worker/`. Set `BROWSER_RUNNER_URL` and `RUNNER_TOKEN` to use a runner.

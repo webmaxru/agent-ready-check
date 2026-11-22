@@ -1,6 +1,6 @@
 // Node entry: `node server/node.mjs` (also the Docker entry).
 // Env: PORT (8080), HOST (0.0.0.0), BASE_URL (public origin, else from the request), REPORTS_DIR (fs store; memory
-// when unset), RATE_LIMIT (10 scans) and RATE_WINDOW (600 s) per client, BROWSER=1 (browser checks with
+// when unset), LEAGUE_ADMIN_TOKEN (enables DELETE /api/league/{host}), RATE_LIMIT (10 scans) and RATE_WINDOW (600 s) per client, BROWSER=1 (browser checks with
 // playwright-core + Chromium; CHROMIUM_PATH overrides the executable), ALLOW_PRIVATE=1 (local testing only),
 // TRUST_PROXY=1 (use X-Forwarded-For for the client key; set behind a reverse proxy).
 import http from 'node:http';
@@ -101,6 +101,7 @@ export async function createNodeApp(env = process.env) {
     scan: (url, { browser }) => scanNode(url, { browser, allowPrivate, browserOptions, runtime: 'node' }),
     store, rateLimit, browserAvailable, allowPrivate, resolve: dnsResolve,
     baseUrl: env.BASE_URL || undefined, assets: publicAssets(env.PUBLIC_DIR || PUBLIC), runtime: 'node',
+    leagueAdminToken: env.LEAGUE_ADMIN_TOKEN || '', leagueRemovalUrl: env.LEAGUE_REMOVAL_URL || undefined, trustProxy: env.TRUST_PROXY === '1',
   });
   return { app, store, browserAvailable };
 }

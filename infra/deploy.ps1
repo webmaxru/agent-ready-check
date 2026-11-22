@@ -36,6 +36,9 @@ param(
   [string]$Sku = 'Free',
   [string]$Subscription = '',
   [string]$RunnerImage = '',
+  [string]$LeagueAdminToken = $env:LEAGUE_ADMIN_TOKEN,
+  [string]$LeagueRemovalUrl = $env:LEAGUE_REMOVAL_URL,
+  [switch]$ClearLeagueSettings,
   [switch]$NoBrowserRunner,
   [switch]$SkipOidc,
   [switch]$SetGitHubVariables,
@@ -190,6 +193,17 @@ if ($Runner -and -not $RunnerImage) {
   }
 }
 
+# Empty League settings keep what is already deployed, so a redeploy without them does not disable moderation.
+if (-not $ClearLeagueSettings -and (-not $LeagueAdminToken -or -not $LeagueRemovalUrl)) {
+  $existing = $null
+  $settingsJson = Invoke-Az @('staticwebapp', 'appsettings', 'list', '-n', $Name, '-g', $ResourceGroup, '-o', 'json') -AllowFail
+  if ($settingsJson) { try { $existing = ($settingsJson | ConvertFrom-Json).properties } catch { $existing = $null } }
+  if ($existing) {
+    if (-not $LeagueAdminToken -and $existing.PSObject.Properties['LEAGUE_ADMIN_TOKEN']) { $LeagueAdminToken = [string]$existing.LEAGUE_ADMIN_TOKEN }
+    if (-not $LeagueRemovalUrl -and $existing.PSObject.Properties['LEAGUE_REMOVAL_URL']) { $LeagueRemovalUrl = [string]$existing.LEAGUE_REMOVAL_URL }
+  }
+}
+
 function Invoke-Deploy([string]$Domain) {
   $deployName = 'agent-ready-check-' + (Get-Date).ToString('yyyyMMddHHmmss')
   $runnerFlag = 'false'
@@ -197,6 +211,7 @@ function Invoke-Deploy([string]$Domain) {
   $json = Invoke-Az @('deployment', 'group', 'create', '-g', $ResourceGroup, '-n', $deployName, '-f', (Join-Path $InfraDir 'main.bicep'),
     '-p', "appName=$Name", "location=$Location", "swaLocation=$SwaLocation", "swaSku=$Sku", "customDomain=$Domain", "domainValidationMethod=$DomainValidationMethod",
     "deployBrowserRunner=$runnerFlag", "runnerImage=$RunnerImage", "deployerPrincipalId=$spObjectId",
+    "leagueAdminToken=$LeagueAdminToken", "leagueRemovalUrl=$LeagueRemovalUrl",
     '--query', 'properties.outputs', '-o', 'json')
   return ($json | ConvertFrom-Json)
 }

@@ -57,15 +57,17 @@ export async function scan(input, o) {
     return { ...base, status: r.status, message: r.message, details: r.details, evidence, compat: r.compat, fix: { ...base.fix, hint: r.fix || null } };
   }));
 
-  const exchanges = Object.fromEntries(fetcher.log.map((ex) => [ex.id, SafeFetcher.evidence(ex)]));
   const layers = layerScores(LAYERS, results);
   const commerce = await commerceSignals(ctx).catch(() => ({ isCommerce: false, signals: [] }));
   const home = await ctx.home();
   const browserData = await ctx.browserData();
+  // Built last so requests made after the checks (the homepage in selective scans, commerce probes) are included.
+  const exchanges = Object.fromEntries(fetcher.log.map((ex) => [ex.id, SafeFetcher.evidence(ex)]));
   return {
     tool: { name: 'agent-ready-check', version: VERSION, catalog_checked: catalog.checked, checks: CHECKS.length },
     url: url.href,
     final_url: home.finalUrl,
+    homepage_exchange_id: home.id,
     scanned_at: new Date(started).toISOString(),
     duration_ms: Date.now() - started,
     mode: { runtime: o.runtime || 'node', browser: !!browserData, browser_error: browserData?.error || null },

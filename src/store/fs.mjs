@@ -1,8 +1,42 @@
 // File-system report store (Node, Docker, Azure Files mount). One JSON file per report plus a small index.
 // Node-only (uses node:fs); the core never imports it.
 import { mkdir, readFile, writeFile, readdir, stat, unlink, rename } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import lockfile from 'proper-lockfile';
 import { RETENTION_MS, newId, hostOf, normHost, ID_RE, serialize } from './common.mjs';
+import { docLeague } from '../league/store.mjs';
+
+/** League standings in one JSON file next to the reports. Mutations are locked across processes and atomic on disk. */
+export function fsLeague({ dir, now = () => Date.now() }) {
+  const file = join(dir, '.league.json');
+  const api = docLeague({
+    now,
+    load: async () => {
+      let raw;
+      try { raw = await readFile(file, 'utf8'); } catch (e) {
+        if (e.code === 'ENOENT') return { doc: null, tag: null };
+        throw e;
+      }
+      return { doc: JSON.parse(raw), tag: null };
+    },
+    save: async (doc) => {
+      await mkdir(dir, { recursive: true });
+      const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`;
+      try {
+        await writeFile(tmp, JSON.stringify(doc), { flag: 'wx' });
+        await rename(tmp, file);
+      } finally { await unlink(tmp).catch(() => {}); }
+      return true;
+    },
+  });
+  const locked = (fn) => async (...args) => {
+    await mkdir(dir, { recursive: true });
+    const release = await lockfile.lock(dir, { lockfilePath: join(dir, '.league.lock'), retries: { retries: 60, minTimeout: 10, maxTimeout: 250 }, stale: 120_000, update: 30_000 });
+    try { return await fn(...args); } finally { await release(); }
+  };
+  return { ...api, kind: 'fs', submit: locked(api.submit), remove: locked(api.remove), restore: locked(api.restore) };
+}
 
 export function fsStore({ dir, retentionMs = RETENTION_MS, now = () => Date.now() } = {}) {
   if (!dir) throw new Error('fsStore needs a dir');
@@ -40,6 +74,7 @@ export function fsStore({ dir, retentionMs = RETENTION_MS, now = () => Date.now(
   return {
     kind: 'fs',
     dir,
+    league: fsLeague({ dir, now }),
     async put(report) {
       await loadIndex();
       const id = report.id || newId();

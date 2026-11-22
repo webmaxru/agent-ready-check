@@ -27,6 +27,7 @@ export function openapi(base) {
       { name: 'scan', description: 'Run scans and read stored reports' },
       { name: 'checks', description: 'The check catalogue' },
       { name: 'badges', description: 'SVG badges for READMEs' },
+      { name: 'league', description: 'The Agent-Ready League leaderboard' },
     ],
     paths: {
       '/api/scan': {
@@ -96,6 +97,38 @@ export function openapi(base) {
           description: 'A report saved by an earlier scan. Reports are kept for 30 days. The HTML version is at /r/{id}.',
           parameters: [{ name: 'id', in: 'path', required: true, description: 'Report id from a scan response (id or report_url).', schema: { type: 'string', pattern: '^[a-z0-9]{6,32}$' } }],
           responses: { 200: { description: 'The report.', content: { 'application/json': { schema: { $ref: '#/components/schemas/Report' } } } }, 404: problem('Unknown or expired report.') },
+        },
+      },
+      '/api/league': {
+        get: {
+          operationId: 'getLeague',
+          tags: ['league'],
+          summary: 'A League board',
+          description: 'The Agent-Ready League leaderboard. Boards: top (score), climbers (30-day gain), grinders (XP), fresh (joined in the last 14 days). Only sites that opted in appear.',
+          parameters: [
+            { name: 'board', in: 'query', required: false, description: 'Board id.', schema: { type: 'string', enum: ['top', 'climbers', 'grinders', 'fresh'], default: 'top' } },
+            { name: 'limit', in: 'query', required: false, description: 'Rows per page, 1 to 100.', schema: { type: 'integer', minimum: 1, maximum: 100, default: 25 } },
+            { name: 'page', in: 'query', required: false, description: 'Page number, from 1.', schema: { type: 'integer', minimum: 1, default: 1 } },
+          ],
+          responses: { 200: { description: 'The board.', content: { 'application/json': { schema: { type: 'object' } } } }, 400: problem('Unknown board.') },
+        },
+        post: {
+          operationId: 'joinLeague',
+          tags: ['league'],
+          summary: 'Join or update a standing',
+          description: 'Submit a stored report (at most 7 days old) to join the League or update the standing. Send report_id from an earlier scan, or url to scan and submit in one call. Publishes the host name, score, level and score history. Reports for IP addresses and local names are refused.',
+          requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { report_id: { type: 'string', pattern: '^[a-z0-9]{6,32}$' }, url: { type: 'string', maxLength: 2048 } } } } } },
+          responses: { 200: { description: 'Updated, or the same report was submitted before.', content: { 'application/json': { schema: { type: 'object' } } } }, 201: { description: 'Joined.', content: { 'application/json': { schema: { type: 'object' } } } }, 409: problem('A newer report is already on the board.'), 422: problem('The report cannot be submitted (too old, no public domain).'), 429: problem('Too many submissions.') },
+        },
+      },
+      '/api/league/{host}': {
+        get: {
+          operationId: 'getLeagueStanding',
+          tags: ['league'],
+          summary: 'One site in the League',
+          description: 'Rank on every board, division, XP, streak, achievements, layer crowns and score history.',
+          parameters: [{ name: 'host', in: 'path', required: true, description: 'Host name, for example example.com.', schema: { type: 'string' } }],
+          responses: { 200: { description: 'The standing.', content: { 'application/json': { schema: { type: 'object' } } } }, 404: problem('The host has not joined.') },
         },
       },
       '/badge/{host}.svg': {
