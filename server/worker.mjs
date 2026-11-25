@@ -65,7 +65,7 @@ function build(env) {
   const runnerOn = !!((env.BROWSER_RUNNER_URL || RUNNER_URL) && (env.RUNNER_TOKEN || RUNNER_TOKEN));
   selfApp = createApp({
     scan: (url, { browser } = {}) => coreScan(url, { transport: selfTransport, resolve, runtime: 'worker', browserData: browser && runnerOn ? remoteBrowser(url, env) : null }),
-    store, rateLimit, browserAvailable: runnerOn, resolve, assets, baseUrl: env.BASE_URL || undefined, runtime: 'worker', leagueAdminToken: env.LEAGUE_ADMIN_TOKEN || '', leagueRemovalUrl: env.LEAGUE_REMOVAL_URL || undefined, homeHtml: HOME_HTML || undefined,
+    store, rateLimit, browserAvailable: runnerOn, resolve, assets, baseUrl: env.BASE_URL || undefined, posthogKey: env.POSTHOG_KEY || '', posthogHost: env.POSTHOG_HOST || '', runtime: 'worker', leagueAdminToken: env.LEAGUE_ADMIN_TOKEN || '', leagueRemovalUrl: env.LEAGUE_REMOVAL_URL || undefined, homeHtml: HOME_HTML || undefined,
   });
   return selfApp;
 }

@@ -23,6 +23,57 @@ import { leaguePanel, renderLeagueHtml, renderProfileHtml, renderLeagueMarkdown,
 
 export const DEFAULT_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'";
 
+function posthogScript({ key, host }) {
+  const config = JSON.stringify({ key, host });
+  return `(() => {
+  const { key, host } = ${config};
+  if (!key || !host) {
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      for (const name of [!key && 'POSTHOG_KEY', !host && 'POSTHOG_HOST'].filter(Boolean)) {
+        console.error(name + ' variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once ' + name + ' is configured');
+      }
+    }
+    return;
+  }
+  const posthog = window.posthog || [];
+  posthog._i = posthog._i || [];
+  posthog.init = (token, options) => posthog._i.push([token, options]);
+  for (const method of ['capture', 'identify', 'reset']) {
+    posthog[method] = (...args) => posthog.push([method, ...args]);
+  }
+  posthog.logger = posthog.logger || {};
+  for (const level of ['info', 'warn']) {
+    posthog.logger[level] = (...args) => posthog.push(function () { this.logger[level](...args); });
+  }
+  window.posthog = posthog;
+  posthog.init(key, {
+    api_host: host,
+    defaults: '2026-08-30',
+    logs: { serviceName: 'agent-ready-check-web' },
+    capture_exceptions: {
+      capture_unhandled_errors: true,
+      capture_unhandled_rejections: true,
+      capture_console_errors: false,
+    },
+  });
+  const script = document.createElement('script');
+  script.async = true;
+  script.crossOrigin = 'anonymous';
+  script.src = host.replace('.i.', '-assets.i.') + '/static/array.js';
+  document.head.append(script);
+})();`;
+}
+
+function cspWithPosthog(csp, host) {
+  if (!host) return csp;
+  let assetHost;
+  try { assetHost = new URL(host).hostname.replace('.i.', '-assets.i.'); } catch { return csp; }
+  const add = (value, directive, source) => value.includes(`${directive} `)
+    ? value.replace(new RegExp(`(${directive}[^;]*)`), `$1 ${source}`)
+    : `${value}; ${directive} ${source}`;
+  return add(add(add(csp, 'script-src', `https://${assetHost}`), 'connect-src', host), 'worker-src', 'blob:');
+}
+
 const MD = 'text/markdown; charset=utf-8';
 const HTML = 'text/html; charset=utf-8';
 const PROBLEM = 'application/problem+json';
@@ -68,6 +119,9 @@ class HttpError extends Error {
  * @param {number} [o.maxBodyBytes]
  * @param {string[]} [o.allowedOrigins] extra browser origins for /mcp
  * @param {string} [o.csp]
+ * @param {string} [o.posthogKey] public browser project token
+ * @param {string} [o.posthogHost] browser ingestion host
+ * @param {(severity:string, body:string, attributes:object)=>void} [o.posthogLog] dedicated server log emitter
  * @param {string} [o.runtime]
  * @param {object} [o.league]      League store (src/league/store.mjs); defaults to store.league, else in memory
  * @param {string} [o.leagueAdminToken]  bearer token that allows DELETE /api/league/{host} (moderation); unset disables it
@@ -77,8 +131,9 @@ class HttpError extends Error {
 export function createApp(o) {
   const {
     scan, store, rateLimit, browserAvailable = false, resolve = null, allowPrivate = false, assets = null,
-    renderers = defaultRenderers, cacheMs = 600_000, maxBodyBytes = 16_384, allowedOrigins = [], csp = DEFAULT_CSP, runtime = 'node', trustProxy = false, leagueAdminToken = '', leagueRemovalUrl = undefined,
+    renderers = defaultRenderers, cacheMs = 600_000, maxBodyBytes = 16_384, allowedOrigins = [], csp: configuredCsp = DEFAULT_CSP, posthogKey = '', posthogHost = '', posthogLog = () => {}, runtime = 'node', trustProxy = false, leagueAdminToken = '', leagueRemovalUrl = undefined,
   } = o;
+  const csp = cspWithPosthog(configuredCsp, posthogHost);
   const R = { ...defaultRenderers, ...renderers };
   const app = new Hono();
   // gzip/deflate for text responses of 1 KB or more on Node (event streams excluded by the middleware). On Workers
@@ -249,7 +304,11 @@ export function createApp(o) {
   async function apiScanResponse(c, input, { browser, format }) {
     if (format && !['json', 'markdown', 'agent'].includes(format)) return problem(c, 400, 'format must be json, markdown or agent.');
     let out;
-    try { out = await runScan(c, input, { browser }); } catch (e) { return scanError(c, e); }
+    try { out = await runScan(c, input, { browser }); } catch (e) {
+      posthogLog('warn', 'scan API request failed', { browser_checks_requested: !!browser, response_format: format || 'json', status_code: Number(e?.status) || 500 });
+      return scanError(c, e);
+    }
+    posthogLog('info', 'scan API request completed', { browser_checks_requested: !!browser, response_format: format || 'json', cache_status: out.cached ? 'hit' : 'miss', score: Number(out.report.score) || 0 });
     const headers = { ...rlHeaders(c), 'cache-control': 'no-store', 'x-cache': out.cached ? 'HIT' : 'MISS' };
     if (out.report.id) headers['content-location'] = `/api/reports/${out.report.id}`;
     if (format === 'markdown') return c.body(R.renderReportMarkdown(out.report, { baseUrl: baseOf(c), reportId: out.report.id }), 200, { ...headers, 'content-type': MD });
@@ -525,6 +584,7 @@ export function createApp(o) {
   app.get('/.well-known/ard.json', (c) => sendText(c, JSON.stringify(files.ardManifest(baseOf(c)), null, 2), 'application/json'));
   app.get('/.well-known/security.txt', (c) => sendText(c, files.securityTxt(baseOf(c)), 'text/plain; charset=utf-8', { 'cache-control': 'public, max-age=86400' }));
   app.get('/.well-known/gpc.json', (c) => sendText(c, JSON.stringify(files.gpcJson()), 'application/json'));
+  app.get('/assets/posthog-init.js', (c) => sendText(c, posthogScript({ key: posthogKey, host: posthogHost }), 'text/javascript; charset=utf-8', { 'cache-control': 'no-store' }));
   for (const [path, a] of Object.entries(R.ASSETS || {})) {
     // Binary assets (fonts) are stored base64-encoded; decode once to bytes (atob works in Node and Workers).
     const body = a.encoding === 'base64' ? Uint8Array.from(atob(a.body), (ch) => ch.charCodeAt(0)) : a.body;
